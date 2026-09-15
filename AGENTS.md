@@ -1,3 +1,5 @@
+> 作業を始める前に、workspace正本入口 `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md` を読み、そこから指定される共通規約とこのrepository固有の規則を適用する。
+
 # AGENTS.md
 
 このrepositoryは、要求・利用負荷・品質要求を根拠付きで発見し、その成果からクラウドアーキテクチャを設計するsourceである。

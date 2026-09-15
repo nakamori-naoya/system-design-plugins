@@ -204,6 +204,9 @@ def build_material(kind: str, grounded_path: str, artifact_path: str, output_pat
         )
     body = (
         "# 日本語の正本素材\n\n"
+        "## 読み手と読後の判断\n\n"
+        "読み手は、この正本を使って要求・設計の次の判断を行う開発担当者とサービス責任者である。"
+        "読後は、確定情報と仮説・未決を区別し、根拠と追跡先から後続へ進めるか、誰へ何を確認するかを判断できる。\n\n"
         "## 正本の状態\n\n```json\n" + json.dumps(outcome, ensure_ascii=False, indent=2) + "\n```\n\n"
         "## 根拠状態\n\n決定と未決を区別し、未決を合意済みへ昇格させない。\n\n"
         "## 決定\n\n```json\n" + json.dumps(grounded.get("decisions", []), ensure_ascii=False, indent=2) + "\n```\n\n"

@@ -7,17 +7,25 @@ instructions:
 focus: quality-requirements-discovery
 document_type: quality-requirements
 output_format: markdown
-out_dir: system-design/quality-requirements
 requires:
   - {plugin: discover-quality-requirements, marketplace: system-design}
   - {plugin: grill, marketplace: grill}
   - {plugin: write-doc, marketplace: write-doc}
 contract:
+  document_destination:
+    new: [output_directory]
+    update: [update_target]
+    exclusive: true
+  document:
+    contract: write-doc/write-doc
+    version: 2
+    new_name: quality-requirements.md
+    result: [status, path, reason]
   grounding_sources: [request, requirements_baseline, workload_model, journey_or_domain_artifacts, decisions, open_questions]
   confidence: [confirmed, assumed, unknown]
   excluded_concerns: [provider_selection, product_selection, cloud_architecture]
   cleanup:
-    delete_after_document: [cleanup_manifest, grounded_input, quality_artifact, material, verification_report, write_doc_config]
+    delete_after_document: [cleanup_manifest, grill_input, grill_output, grounded_input, quality_artifact, material, verification_report]
     preserve: [referenced_artifacts, quality_document_path]
   outcome:
     status: ${verification_report.status}
@@ -26,10 +34,10 @@ contract:
     document_path: ${quality_document_path}
 steps:
   - {id: plan-cleanup, script: scripts/plan-cleanup.py, purpose: この実行が所有する一時成果物だけを後片付け対象として宣言する, needs: [run_root], provides: [cleanup_manifest]}
-  - {id: settle, playbook: grill, purpose: 入力だけでは決まらない品質閾値を1問ずつ推奨付きで確かめる, needs: [request, referenced_artifacts], provides: [decisions, open_questions]}
+  - {id: settle, playbook: grill, purpose: 入力だけでは決まらない品質閾値を1問ずつ推奨付きで確かめる, needs: [run_root, request, referenced_artifacts], provides: [decisions, open_questions]}
   - {id: ground, script: scripts/ground.py, purpose: 依頼・資料・決定・未決を根拠状態付き入力へ束ねる, needs: [request, referenced_artifacts, decisions, open_questions], provides: [grounded_input]}
   - {id: discover, skill: discover-quality-requirements, purpose: 測定可能な品質要求正本を作る, needs: [grounded_input], provides: [quality_artifact]}
   - {id: material, script: scripts/material.py, purpose: 品質要求正本と根拠を日本語Markdown素材へ束ねる, needs: [grounded_input, quality_artifact], provides: [material]}
   - {id: verify, script: scripts/verify.py, purpose: 観測点・指標・閾値・時間窓・未決保持を検査する, needs: [grounded_input, material, open_questions], provides: [verification_report]}
-  - {id: document, playbook: write-doc, purpose: readyとunresolvedの双方で状態を含む品質要求正本を日本語Markdownで1本保存する, input: {document_type: quality-requirements, name: quality-requirements.md}, needs: [material, verification_report], provides: [quality_document_path, write_doc_config]}
-  - {id: cleanup, script: scripts/cleanup.py, purpose: 存在する範囲で自分が所有する一時成果物とwrite-doc設定だけを成功時・失敗時に削除する, needs: [cleanup_manifest], provides: [cleanup_report], always_run: true}
+  - {id: document, playbook: write-doc, purpose: readyとunresolvedの双方で状態を含む品質要求正本を日本語Markdownで1本保存する, input: {document_type: quality-requirements, material: [{kind: file, path: '${material}'}]}, needs: [material, verification_report, document_destination], provides: [quality_document_path]}
+  - {id: cleanup, script: scripts/cleanup.py, purpose: 存在する範囲で自分が所有する一時成果物だけを成功時・失敗時に削除する, needs: [cleanup_manifest], provides: [cleanup_report], always_run: true}

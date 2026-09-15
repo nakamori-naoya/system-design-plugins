@@ -7,18 +7,26 @@ instructions:
 focus: cloud-architecture-design
 document_type: cloud-architecture
 output_format: markdown
-out_dir: system-design/architectures
 requires:
   - {plugin: design-cloud-architecture, marketplace: system-design}
   - {plugin: grill, marketplace: grill}
   - {plugin: write-doc, marketplace: write-doc}
 contract:
+  document_destination:
+    new: [output_directory]
+    update: [update_target]
+    exclusive: true
+  document:
+    contract: write-doc/write-doc
+    version: 2
+    new_name: cloud-architecture.md
+    result: [status, path, reason]
   grounding_sources: [request, requirements_baseline, logical_design, workload_model, quality_requirements, organizational_constraints, decisions, open_questions, provider_resolution]
   confidence: [confirmed, assumed, unknown]
   excluded_concerns: [requirements_redesign, journey, domain, logical_data_model, application_internal_design, terraform]
   cleanup:
     finally_step: finalize-provider
-    delete_after_document: [cleanup_manifest, grounded_input, architecture_artifact, material, verification_report, runtime_config_path, write_doc_config]
+    delete_after_document: [cleanup_manifest, grill_input, grill_output, grounded_input, architecture_artifact, material, verification_report, runtime_config_path]
     preserve: [referenced_artifacts, architecture_document_path]
   outcome:
     status: ${verification_report.status}
@@ -29,10 +37,10 @@ steps:
   - {id: plan-cleanup, script: scripts/plan-cleanup.py, purpose: この実行が所有する一時成果物だけを後片付け対象として宣言する, needs: [run_root], provides: [cleanup_manifest]}
   - {id: prepare-provider, script: scripts/prepare.sh, purpose: 実行単位の設定を作る, needs: [target_repository], provides: [runtime_config_path]}
   - {id: resolve-provider, script: scripts/resolve.sh, purpose: AWSまたはGCPと設定根拠を解決する, needs: [runtime_config_path], provides: [provider_resolution]}
-  - {id: settle, playbook: grill, purpose: 入力だけでは決まらない設計上の選択を1問ずつ推奨付きで確かめる, needs: [request, referenced_artifacts, provider_resolution], provides: [decisions, open_questions]}
+  - {id: settle, playbook: grill, purpose: 入力だけでは決まらない設計上の選択を1問ずつ推奨付きで確かめる, needs: [run_root, request, referenced_artifacts, provider_resolution], provides: [decisions, open_questions]}
   - {id: ground, script: scripts/ground.py, purpose: 依頼・資料・決定・未決・プロバイダー根拠を根拠状態付き入力へ束ねる, needs: [request, referenced_artifacts, decisions, open_questions, provider_resolution], provides: [grounded_input]}
   - {id: design, skill: design-cloud-architecture, purpose: 解決済みプロバイダーを根拠として比較・選定・図・ADRを作る, needs: [grounded_input, provider_resolution], provides: [architecture_artifact]}
   - {id: material, script: scripts/material.py, purpose: 設計正本と要求追跡を日本語Markdown素材へ束ねる, needs: [grounded_input, architecture_artifact], provides: [material]}
   - {id: verify, script: scripts/verify.py, purpose: プロバイダー根拠・選定比較・ADR・Mermaid図・未決保持を検査する, needs: [grounded_input, material, provider_resolution, open_questions], provides: [verification_report]}
-  - {id: document, playbook: write-doc, purpose: readyとunresolvedの双方で状態を含むクラウドアーキテクチャ正本を日本語Markdownで1本保存する, input: {document_type: cloud-architecture, name: cloud-architecture.md}, needs: [material, verification_report], provides: [architecture_document_path, write_doc_config]}
-  - {id: finalize-provider, script: scripts/finalize.sh, purpose: プロバイダー設定が未作成でも実行し、自分が所有する設定・一時成果物・write-doc設定だけを成功時・失敗時に削除する, needs: [cleanup_manifest], provides: [cleanup_report], always_run: true}
+  - {id: document, playbook: write-doc, purpose: readyとunresolvedの双方で状態を含むクラウドアーキテクチャ正本を日本語Markdownで1本保存する, input: {document_type: cloud-architecture, material: [{kind: file, path: '${material}'}]}, needs: [material, verification_report, document_destination], provides: [architecture_document_path]}
+  - {id: finalize-provider, script: scripts/finalize.sh, purpose: プロバイダー設定が未作成でも実行し、自分が所有する設定・一時成果物だけを成功時・失敗時に削除する, needs: [cleanup_manifest], provides: [cleanup_report], always_run: true}
