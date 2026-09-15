@@ -1,0 +1,6 @@
+version: 1
+cloud:
+  provider: azure
+instructions:
+  architecture:
+    directive: Resolve provider before architecture design

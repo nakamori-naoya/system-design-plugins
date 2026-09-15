@@ -1,0 +1,55 @@
+{
+  "name": "system-design",
+  "version": "0.1.0",
+  "description": "要求、利用負荷、品質要求から根拠付きクラウドアーキテクチャを設計する",
+  "author": {
+    "name": "NaoyaNakamori"
+  },
+  "skills": [
+    "./playbooks/system-design/discover-requirements",
+    "./playbooks/system-design/discover-workload-model",
+    "./playbooks/system-design/discover-quality-requirements",
+    "./playbooks/system-design/design-cloud-architecture"
+  ],
+  "interface": {
+    "displayName": "システム設計",
+    "shortDescription": "要求からクラウド設計を根拠付きで組み立てる",
+    "longDescription": "要求、利用負荷、品質要求を分けて発見し、選定、比較、ADR、編集可能な構成図、追跡表を備えたクラウド設計へつなげます。",
+    "developerName": "NaoyaNakamori",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills",
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "要求・負荷・品質を整理してクラウド設計へつなげて。",
+      "この要求資料から品質シナリオを発見して。",
+      "根拠付きでクラウド構成案を比較しADRと図を作って。"
+    ]
+  },
+  "metadata": {
+    "harness": {
+      "installationSurface": "playbook-package",
+      "marketplace": "system-design",
+      "playbooks": {
+        "discover-requirements": "./playbooks/system-design/discover-requirements",
+        "discover-workload-model": "./playbooks/system-design/discover-workload-model",
+        "discover-quality-requirements": "./playbooks/system-design/discover-quality-requirements",
+        "design-cloud-architecture": "./playbooks/system-design/design-cloud-architecture"
+      },
+      "internalPlugins": {
+        "discover-requirements": "./skills/discover-requirements",
+        "discover-workload-model": "./skills/discover-workload-model",
+        "discover-quality-requirements": "./skills/discover-quality-requirements",
+        "design-cloud-architecture": "./skills/design-cloud-architecture"
+      },
+      "implements": [
+        {"id": "system-design/discover-requirements", "version": 1, "kind": "playbook", "playbook": "discover-requirements"},
+        {"id": "system-design/discover-workload-model", "version": 1, "kind": "playbook", "playbook": "discover-workload-model"},
+        {"id": "system-design/discover-quality-requirements", "version": 1, "kind": "playbook", "playbook": "discover-quality-requirements"},
+        {"id": "system-design/design-cloud-architecture", "version": 1, "kind": "playbook", "playbook": "design-cloud-architecture"}
+      ]
+    }
+  }
+}

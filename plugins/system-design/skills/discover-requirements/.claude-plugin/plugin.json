@@ -1,0 +1,11 @@
+{
+  "name": "discover-requirements",
+  "version": "0.1.0",
+  "description": "要求を根拠と状態付きで発見する",
+  "skills": "./",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# OS and language-generated files
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Repository-root allowlist
+/*
+!/.agents/
+!/.claude-plugin/
+!/.github/
+!/plugins/
+!/scripts/
+!/tests/
+!/AGENTS.md
+!/LICENSE
+!/README.md
+!/SECURITY.md
+!/.gitignore

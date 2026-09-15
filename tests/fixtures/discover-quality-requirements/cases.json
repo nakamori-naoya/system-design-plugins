@@ -1,0 +1,83 @@
+{
+  "scenarios": [
+    {
+      "id": "quality-success",
+      "kind": "success",
+      "input": {
+        "subject": "公開状態確認エンドポイント",
+        "sources": [
+          "要求",
+          "ユーザージャーニー",
+          "ドメイン",
+          "利用・負荷",
+          "品質決定"
+        ]
+      },
+      "expected": {
+        "decision": "create_artifact",
+        "artifact_fixture": "success.json",
+        "state": "ready_for_architecture",
+        "hypothesis_quality_requirement_ids": [
+          "QR-002",
+          "QR-006"
+        ],
+        "workload_hypothesis_links": [
+          "QWL-001",
+          "QWL-002",
+          "QWL-004"
+        ],
+        "resolved_conflict_ids": [
+          "QCON-001"
+        ]
+      }
+    },
+    {
+      "id": "quality-out-of-scope",
+      "kind": "out_of_scope",
+      "input": {
+        "request": "AWSのサービスとデータベースを選び、複数リージョンの構成図とTerraformを作って",
+        "sources": []
+      },
+      "expected": {
+        "decision": "stop_and_route",
+        "artifact_fixture": null,
+        "reason": "依頼の中心がクラウド、製品、構成、IaCの選定であり、品質要求の発見ではない",
+        "route": "design-cloud-architecture"
+      }
+    },
+    {
+      "id": "quality-vague-boundary",
+      "kind": "boundary",
+      "base": {
+        "statement": "高可用とは、暦月における有効な監視要求の成功率が99.9%以上である",
+        "condition": "測定定義を持つ合意記録への参照がある"
+      },
+      "one_change": {
+        "condition": "測定定義への参照だけがなく、原文は高可用のままである"
+      },
+      "expected": {
+        "base_status": "agreed",
+        "changed_status": "unresolved",
+        "changed_threshold": null,
+        "blocking_question": "高可用の観測点、指標、閾値、時間窓、母集団は何か",
+        "must_not": "一般的な可用性の値を補完しない"
+      }
+    },
+    {
+      "id": "quality-agreement-boundary",
+      "kind": "boundary",
+      "base": {
+        "statement": "95パーセンタイルの応答時間は300ミリ秒以下",
+        "condition": "決定者、対象範囲、測定条件がすべてある"
+      },
+      "one_change": {
+        "condition": "決定者の合意だけがない"
+      },
+      "expected": {
+        "base_status": "agreed",
+        "changed_status": "hypothesis",
+        "must_not": "同じ数値であることを理由に合意済みへ昇格しない"
+      }
+    }
+  ]
+}

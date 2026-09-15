@@ -1,0 +1,13 @@
+{
+  "playbook": "design-cloud-architecture",
+  "scenario": "boundary",
+  "cleanup": {
+    "owned": "一時成果物だけを削除する",
+    "preserve": "参照資料と保存済み正本",
+    "reject": "実行領域外または所有不明のpath"
+  },
+  "expected": {
+    "outside_path_rejected": true,
+    "always_run": true
+  }
+}

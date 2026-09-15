@@ -1,0 +1,475 @@
+{
+  "schema_version": 2,
+  "artifact": {
+    "id": "WLMDL-order-submitted",
+    "version": 1,
+    "subject": "注文受付イベント",
+    "state": "ready_for_downstream"
+  },
+  "input_artifacts": [
+    {
+      "id": "SRC-001",
+      "kind": "telemetry",
+      "locator": "2026-Q2 order telemetry dataset",
+      "version_or_hash": "sha256:telemetry-fixture-v1",
+      "observed_at": "2026-07-01"
+    },
+    {
+      "id": "SRC-002",
+      "kind": "requirements",
+      "locator": "requirements/order-processing.requirements.json",
+      "version_or_hash": "version:1",
+      "observed_at": "2026-07-03"
+    },
+    {
+      "id": "SRC-003",
+      "kind": "forecast",
+      "locator": "FY2027 planning forecast section 2",
+      "version_or_hash": "forecast-v3",
+      "observed_at": "2026-07-05"
+    }
+  ],
+  "claims": [
+    {
+      "id": "CLM-001",
+      "statement": "月間活動購入者は250,000人",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "actors.monthly_active",
+      "observed_at": "2026-Q2",
+      "characteristic": "population_size"
+    },
+    {
+      "id": "CLM-002",
+      "statement": "対象日の注文イベントは86,400件",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "events.daily_total",
+      "observed_at": "2026-06-30",
+      "characteristic": "average_rate"
+    },
+    {
+      "id": "CLM-003",
+      "statement": "5分窓の最大到着率は毎秒25イベント",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "rates.max_5m",
+      "observed_at": "2026-Q2",
+      "characteristic": "peak_rate"
+    },
+    {
+      "id": "CLM-004",
+      "statement": "10秒窓の最大到着率は毎秒60イベント",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "rates.max_10s",
+      "observed_at": "2026-Q2",
+      "characteristic": "burst_rate"
+    },
+    {
+      "id": "CLM-005",
+      "statement": "注文関連操作の読取割合は0.7",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "operations.read_share",
+      "observed_at": "2026-Q2",
+      "characteristic": "read_share"
+    },
+    {
+      "id": "CLM-006",
+      "statement": "注文関連操作の書込割合は0.3",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "operations.write_share",
+      "observed_at": "2026-Q2",
+      "characteristic": "write_share"
+    },
+    {
+      "id": "CLM-007",
+      "statement": "要求データ量の95パーセンタイルは2,048バイト",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "payload.request.p95",
+      "observed_at": "2026-Q2",
+      "characteristic": "request_payload"
+    },
+    {
+      "id": "CLM-008",
+      "statement": "応答データ量の95パーセンタイルは4,096バイト",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "payload.response.p95",
+      "observed_at": "2026-Q2",
+      "characteristic": "response_payload"
+    },
+    {
+      "id": "CLM-009",
+      "statement": "注文イベントを365日保持する",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-002",
+      "locator": "CON-RETENTION-001",
+      "observed_at": "2026-07-03",
+      "characteristic": "retention_period"
+    },
+    {
+      "id": "CLM-010",
+      "statement": "注文イベントは翌年8%増える見込み",
+      "classification": "hypothesis",
+      "source_artifact_id": "SRC-003",
+      "locator": "growth.order_events",
+      "observed_at": "2026-07-05",
+      "characteristic": "growth_rate"
+    },
+    {
+      "id": "CLM-011",
+      "statement": "1つの注文イベントを平均3受信者が利用する",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "consumers.mean_per_event",
+      "observed_at": "2026-Q2",
+      "characteristic": "fan_out"
+    },
+    {
+      "id": "CLM-012",
+      "statement": "上位1テナントがイベントの35%を占める",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "tenants.top1_share",
+      "observed_at": "2026-Q2",
+      "characteristic": "hot_key_share"
+    },
+    {
+      "id": "CLM-013",
+      "statement": "テナント別イベント分布は上位へ偏っている",
+      "classification": "fact",
+      "source_artifact_id": "SRC-001",
+      "locator": "tenants.distribution",
+      "observed_at": "2026-Q2",
+      "characteristic": "distribution"
+    }
+  ],
+  "workload_items": [
+    {
+      "id": "WL-001",
+      "kind": "event",
+      "name": "order-submitted",
+      "period": "2026-Q2",
+      "source_subject_refs": [
+        "REQ-ORDER-001",
+        "CEVT-OrderSubmitted"
+      ],
+      "characteristics": {
+        "population_size": {
+          "status": "confirmed",
+          "value": 250000,
+          "unit": "actors/month",
+          "time_window": "2026年第2四半期の月間活動",
+          "population": "注文した利用者",
+          "claim_ids": [
+            "CLM-001"
+          ],
+          "confidence": "high",
+          "calculation": "直接観測した",
+          "verification_plan": "月次の重複を除いた利用者数を再集計する",
+          "sensitivity": "actor数が50%増えたら地域・tenant別分布の判断を再確認する",
+          "open_question_ids": []
+        },
+        "average_rate": {
+          "status": "confirmed",
+          "value": 1,
+          "unit": "events/second",
+          "time_window": "2026-06-30の暦日",
+          "population": "同日の全注文受付イベント",
+          "claim_ids": [
+            "CLM-002"
+          ],
+          "confidence": "high",
+          "calculation": "算式: 86,400イベント/日 ÷ 86,400秒/日",
+          "verification_plan": "日次件数と欠測を再集計する",
+          "sensitivity": "活動時間基準へ変われば平均到着率を再計算する",
+          "open_question_ids": []
+        },
+        "peak_rate": {
+          "status": "confirmed",
+          "value": 25,
+          "unit": "events/second",
+          "time_window": "2026年第2四半期の最大5分窓",
+          "population": "全注文受付イベント",
+          "claim_ids": [
+            "CLM-003"
+          ],
+          "confidence": "high",
+          "calculation": "5分窓event数 / 300 seconds",
+          "verification_plan": "5分移動窓を再集計する",
+          "sensitivity": "最大5分到着率が20%増えたらピーク前提の設計判断を再確認する",
+          "open_question_ids": []
+        },
+        "burst_rate": {
+          "status": "confirmed",
+          "value": 60,
+          "unit": "events/second",
+          "time_window": "2026年第2四半期の最大10秒窓",
+          "population": "全注文受付イベント",
+          "claim_ids": [
+            "CLM-004"
+          ],
+          "confidence": "high",
+          "calculation": "10秒窓event数 / 10 seconds",
+          "verification_plan": "10秒移動窓を再集計する",
+          "sensitivity": "突発負荷の継続時間が延びたら吸収条件を再確認する",
+          "open_question_ids": []
+        },
+        "read_share": {
+          "status": "confirmed",
+          "value": 0.7,
+          "unit": "fraction",
+          "time_window": "2026-Q2",
+          "population": "注文関連の読取・書込操作",
+          "claim_ids": [
+            "CLM-005"
+          ],
+          "confidence": "high",
+          "calculation": "算式: 読取操作数 ÷ 全読取・書込操作数",
+          "verification_plan": "操作種別ごとの件数を再集計する",
+          "sensitivity": "読取割合が0.85を超えたら読取偏重の判断を再確認する",
+          "open_question_ids": []
+        },
+        "write_share": {
+          "status": "confirmed",
+          "value": 0.3,
+          "unit": "fraction",
+          "time_window": "2026-Q2",
+          "population": "注文関連の読取・書込操作",
+          "claim_ids": [
+            "CLM-006"
+          ],
+          "confidence": "high",
+          "calculation": "算式: 書込操作数 ÷ 全読取・書込操作数",
+          "verification_plan": "操作種別ごとの件数を再集計する",
+          "sensitivity": "書込割合が0.4を超えたら書込負荷の判断を再確認する",
+          "open_question_ids": []
+        },
+        "request_payload": {
+          "status": "confirmed",
+          "value": 2048,
+          "unit": "bytes/request",
+          "time_window": "2026年第2四半期の95パーセンタイル",
+          "population": "注文受付要求",
+          "claim_ids": [
+            "CLM-007"
+          ],
+          "confidence": "high",
+          "calculation": "95パーセンタイルを直接観測した",
+          "verification_plan": "圧縮前の要求バイト数の95パーセンタイルを再集計する",
+          "sensitivity": "95パーセンタイルが倍増したら転送量前提を再確認する",
+          "open_question_ids": []
+        },
+        "response_payload": {
+          "status": "confirmed",
+          "value": 4096,
+          "unit": "bytes/response",
+          "time_window": "2026年第2四半期の95パーセンタイル",
+          "population": "注文受付応答",
+          "claim_ids": [
+            "CLM-008"
+          ],
+          "confidence": "high",
+          "calculation": "95パーセンタイルを直接観測した",
+          "verification_plan": "圧縮前の応答バイト数の95パーセンタイルを再集計する",
+          "sensitivity": "95パーセンタイルが倍増したら転送量前提を再確認する",
+          "open_question_ids": []
+        },
+        "retention_period": {
+          "status": "confirmed",
+          "value": 365,
+          "unit": "days/event",
+          "time_window": "2026-07-03発効の方針",
+          "population": "全注文受付イベント",
+          "claim_ids": [
+            "CLM-009"
+          ],
+          "confidence": "high",
+          "calculation": "合意済み方針の値",
+          "verification_plan": "要求正本の保持制約の版を照合する",
+          "sensitivity": "保持期間変更時に蓄積量見込みを再計算する",
+          "open_question_ids": []
+        },
+        "growth_rate": {
+          "status": "hypothesis",
+          "value": 0.08,
+          "unit": "fraction/year",
+          "time_window": "2027年度予測",
+          "population": "年間注文受付イベント",
+          "claim_ids": [
+            "CLM-010"
+          ],
+          "confidence": "medium",
+          "calculation": "算式: （予測イベント数－基準イベント数）÷基準イベント数",
+          "verification_plan": "四半期ごとに実績と予測を比較する",
+          "sensitivity": "実績差が3パーセントポイントを超えたら処理容量の前提を再確認する",
+          "open_question_ids": []
+        },
+        "fan_out": {
+          "status": "confirmed",
+          "value": 3,
+          "unit": "targets/source-event",
+          "time_window": "2026-Q2",
+          "population": "全注文受付イベントの受信者配信",
+          "claim_ids": [
+            "CLM-011"
+          ],
+          "confidence": "high",
+          "calculation": "算式: 利用者への配信数 ÷ 発生元イベント数",
+          "verification_plan": "発生元イベントごとの受信者数を再集計する",
+          "sensitivity": "配信先数が5を超えたら増幅前提を再確認する",
+          "open_question_ids": []
+        },
+        "hot_key_share": {
+          "status": "confirmed",
+          "value": 0.35,
+          "unit": "fraction",
+          "time_window": "2026-Q2",
+          "population": "テナント別注文受付イベント",
+          "claim_ids": [
+            "CLM-012"
+          ],
+          "confidence": "high",
+          "calculation": "算式: 上位テナントのイベント数 ÷ 全テナントのイベント数",
+          "verification_plan": "テナント別割合を週次で再集計する",
+          "sensitivity": "最大割合が0.5を超えたら集中負荷の判断を再確認する",
+          "open_question_ids": []
+        }
+      },
+      "distribution": {
+        "status": "confirmed",
+        "shape": "skewed",
+        "skew_dimension": "tenant_id",
+        "summary": "上位1テナントが全イベントの35%を占める",
+        "claim_ids": [
+          "CLM-013"
+        ],
+        "confidence": "high",
+        "verification_plan": "テナント別イベント数とローレンツ曲線を週次で再集計する",
+        "sensitivity": "集中率が上がれば単一テナント集中を扱う後続判断を再確認する",
+        "open_question_ids": []
+      }
+    }
+  ],
+  "design_inputs": [
+    {
+      "id": "DIN-001",
+      "workload_refs": [
+        "WL-001.average_rate",
+        "WL-001.peak_rate",
+        "WL-001.burst_rate",
+        "SEN-001"
+      ],
+      "source_claim_ids": [
+        "CLM-002",
+        "CLM-003",
+        "CLM-004"
+      ],
+      "adopted_assumption": "注文受付は観測済みの平均、5分ピーク、10秒突発を容量比較の基準として扱う",
+      "applicability": "implementation_acceptance",
+      "requirement_refs": [
+        "REQ-ORDER-001"
+      ],
+      "architecture_concerns": [
+        "capacity",
+        "flow_control"
+      ],
+      "confidence": "high",
+      "revisit_when": "週次集計の5分ピークが毎秒25イベントを20%以上上回るとき",
+      "out_of_scope": "この値だけからインスタンス数またはクラウドサービスを決定しない"
+    }
+  ],
+  "terminology": {
+    "source": {
+      "locator": "/evidence/order-processing-glossary.md",
+      "version": 1
+    },
+    "usages": [
+      {
+        "subject_id": "WL-001",
+        "preferred_terms": [
+          "注文受付イベント"
+        ]
+      },
+      {
+        "subject_id": "DIN-001",
+        "preferred_terms": [
+          "到着率"
+        ]
+      }
+    ]
+  },
+  "sensitivities": [
+    {
+      "id": "SEN-001",
+      "workload_item_id": "WL-001",
+      "characteristic": "peak_rate",
+      "condition": "5分ピークが毎秒25イベントを20%以上上回る",
+      "affected_decision": "peak処理余力に関するcloud設計比較",
+      "validation_trigger": "週次rolling window集計"
+    },
+    {
+      "id": "SEN-002",
+      "workload_item_id": "WL-001",
+      "characteristic": "growth_rate",
+      "condition": "実績増加率が予測と3パーセントポイント以上ずれる",
+      "affected_decision": "将来容量と費用の比較期間",
+      "validation_trigger": "四半期実績確定"
+    },
+    {
+      "id": "SEN-003",
+      "workload_item_id": "WL-001",
+      "characteristic": "fan_out",
+      "condition": "配信先数が5を超える",
+      "affected_decision": "event増幅を扱うcloud設計比較",
+      "validation_trigger": "consumer追加決定"
+    },
+    {
+      "id": "SEN-004",
+      "workload_item_id": "WL-001",
+      "characteristic": "hot_key_share",
+      "condition": "最大テナント割合が0.5を超える",
+      "affected_decision": "集中負荷と障害影響の比較",
+      "validation_trigger": "週次tenant share集計"
+    }
+  ],
+  "open_questions": [],
+  "handoff": {
+    "ready": true,
+    "blocking_question_ids": [],
+    "downstream": {
+      "quality": [
+        "WL-001",
+        "WL-001.peak_rate",
+        "WL-001.burst_rate",
+        "SEN-001"
+      ],
+      "cloud_design": [
+        "WL-001",
+        "WL-001.distribution",
+        "WL-001.fan_out",
+        "WL-001.hot_key_share",
+        "SEN-002",
+        "SEN-003",
+        "SEN-004",
+        "DIN-001"
+      ]
+    }
+  },
+  "change_log": [
+    {
+      "version": 1,
+      "changed_input_ids": [
+        "SRC-001",
+        "SRC-002",
+        "SRC-003"
+      ],
+      "invalidated_refs": [],
+      "summary": "2026年第2四半期の観測、保持決定、2027年度予測から初版を作成"
+    }
+  ]
+}

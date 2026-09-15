@@ -1,0 +1,5 @@
+version: 1
+cloud: {}
+instructions:
+  architecture:
+    directive: Resolve provider before architecture design

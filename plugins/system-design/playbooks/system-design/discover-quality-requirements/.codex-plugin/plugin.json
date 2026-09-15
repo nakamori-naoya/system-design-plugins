@@ -1,0 +1,11 @@
+{
+  "name": "discover-quality-requirements",
+  "version": "0.1.0",
+  "description": "測定可能な品質要求を発見する",
+  "skills": "./",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
+}

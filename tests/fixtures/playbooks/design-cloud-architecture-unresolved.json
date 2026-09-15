@@ -1,0 +1,22 @@
+{
+  "playbook": "design-cloud-architecture",
+  "scenario": "abnormal",
+  "request": "未確定事項を含む正本を作る",
+  "referenced_artifacts": [],
+  "grill": {
+    "status": "completed",
+    "decisions": [],
+    "open_questions": [
+      {
+        "id": "q2",
+        "question": "ピーク時の上限は合意済みか",
+        "state": "open",
+        "reason": "観測データが無い"
+      }
+    ]
+  },
+  "expected": {
+    "verification_status": "unresolved",
+    "promote_open_question": false
+  }
+}

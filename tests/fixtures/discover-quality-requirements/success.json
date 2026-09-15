@@ -1,0 +1,506 @@
+{
+  "schema_version": 1,
+  "artifact": {
+    "id": "QRMDL-status-endpoint",
+    "version": 1,
+    "subject": "公開状態確認エンドポイント",
+    "state": "ready_for_architecture"
+  },
+  "input_artifacts": [
+    {
+      "id": "SRC-001",
+      "kind": "requirements",
+      "locator": "/evidence/status.requirements.json",
+      "version_or_hash": "version:2",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-002",
+      "kind": "journey",
+      "locator": "/evidence/status-journey.md",
+      "version_or_hash": "sha256:journey-001",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-003",
+      "kind": "domain",
+      "locator": "/evidence/status-domain.md",
+      "version_or_hash": "sha256:domain-001",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-004",
+      "kind": "workload",
+      "locator": "/evidence/status.workload.json",
+      "version_or_hash": "version:3",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-005",
+      "kind": "decision",
+      "locator": "/evidence/quality-decisions.md",
+      "version_or_hash": "sha256:decisions-001",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "SRC-006",
+      "kind": "telemetry",
+      "locator": "/evidence/cost-benchmark.json",
+      "version_or_hash": "sha256:benchmark-001",
+      "observed_at": "2026-09-03"
+    }
+  ],
+  "claims": [
+    {
+      "id": "CLM-001",
+      "statement": "有効な状態確認要求の95パーセンタイル応答時間を300ミリ秒以下とする",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-005",
+      "source_ref": "QD-01",
+      "observed_at": "2026-09-02",
+      "category": "latency"
+    },
+    {
+      "id": "CLM-002",
+      "statement": "提供開始時ピークを毎秒250要求と予測する",
+      "classification": "hypothesis",
+      "source_artifact_id": "SRC-004",
+      "source_ref": "WL-001.peak_rate",
+      "observed_at": "2026-09-01",
+      "category": "throughput"
+    },
+    {
+      "id": "CLM-003",
+      "statement": "暦月の可用性を99.9%以上とする",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-005",
+      "source_ref": "QD-02",
+      "observed_at": "2026-09-02",
+      "category": "availability"
+    },
+    {
+      "id": "CLM-004",
+      "statement": "公開候補ごとに重大脆弱性を0件とする",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-001",
+      "source_ref": "REQ-SEC-01",
+      "observed_at": "2026-09-01",
+      "category": "security"
+    },
+    {
+      "id": "CLM-005",
+      "statement": "サービス影響障害を5分以内に検知可能にする",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-001",
+      "source_ref": "REQ-OPS-01",
+      "observed_at": "2026-09-01",
+      "category": "operability"
+    },
+    {
+      "id": "CLM-006",
+      "statement": "月額200米ドルを暫定費用上限とする",
+      "classification": "hypothesis",
+      "source_artifact_id": "SRC-005",
+      "source_ref": "QD-DRAFT-03",
+      "observed_at": "2026-09-02",
+      "category": "cost"
+    },
+    {
+      "id": "CLM-007",
+      "statement": "毎秒250要求のピーク測定費用は月額180米ドルだった",
+      "classification": "fact",
+      "source_artifact_id": "SRC-006",
+      "source_ref": "run-2026-09-03",
+      "observed_at": "2026-09-03",
+      "category": "cost"
+    }
+  ],
+  "quality_requirements": [
+    {
+      "id": "QR-001",
+      "category": "latency",
+      "title": "状態確認応答時間",
+      "status": "agreed",
+      "source_claim_ids": [
+        "CLM-001"
+      ],
+      "upstream_refs": [
+        "REQ-STATUS-01",
+        "JRN-STATUS-02"
+      ],
+      "workload_link_ids": [
+        "QWL-001"
+      ],
+      "observation_point": "edge request receipt to final response byte",
+      "metric": {
+        "name": "end_to_end_latency",
+        "statistic": "p95"
+      },
+      "threshold": {
+        "operator": "<=",
+        "value": 300,
+        "unit": "milliseconds"
+      },
+      "time_window": "5分移動窓を暦月単位で評価",
+      "population": "有効な公開状態確認要求",
+      "verification_method": "代表的な負荷試験で端から端までの追跡区間を集計する",
+      "verification_owner": "サービス責任者",
+      "confidence": "high",
+      "design_sensitivity": "if the agreed threshold falls below 200 ms, reevaluate latency trade-offs",
+      "open_question_ids": [],
+      "conflict_ids": []
+    },
+    {
+      "id": "QR-002",
+      "category": "throughput",
+      "title": "提供開始時ピークの完了率",
+      "status": "hypothesis",
+      "source_claim_ids": [
+        "CLM-002"
+      ],
+      "upstream_refs": [
+        "REQ-STATUS-01",
+        "WL-001.peak_rate"
+      ],
+      "workload_link_ids": [
+        "QWL-002"
+      ],
+      "observation_point": "accepted request to successful response",
+      "metric": {
+        "name": "completed_request_rate",
+        "statistic": "minimum"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 250,
+        "unit": "requests/second"
+      },
+      "time_window": "提供開始月の連続10分ピーク窓",
+      "population": "有効な公開状態確認要求",
+      "verification_method": "到着率一定の10分間負荷試験を実行し、成功応答を数える",
+      "verification_owner": "performance test owner",
+      "confidence": "medium",
+      "design_sensitivity": "if measured peak differs by 20 percent, reevaluate throughput alternatives",
+      "open_question_ids": [],
+      "conflict_ids": []
+    },
+    {
+      "id": "QR-003",
+      "category": "availability",
+      "title": "状態確認エンドポイントの月間可用性",
+      "status": "agreed",
+      "source_claim_ids": [
+        "CLM-003"
+      ],
+      "upstream_refs": [
+        "REQ-STATUS-01",
+        "JRN-STATUS-02"
+      ],
+      "workload_link_ids": [
+        "QWL-003"
+      ],
+      "observation_point": "external probe at public endpoint",
+      "metric": {
+        "name": "successful_probe_ratio",
+        "statistic": "ratio"
+      },
+      "threshold": {
+        "operator": ">=",
+        "value": 0.999,
+        "unit": "fraction"
+      },
+      "time_window": "1分間隔の監視要求を使う暦月",
+      "population": "合意済み保守を除く定期実行の有効な外部監視要求",
+      "verification_method": "成功した監視要求数を対象監視要求数で割る",
+      "verification_owner": "service reliability owner",
+      "confidence": "high",
+      "design_sensitivity": "if target rises above 0.999, reevaluate failure-domain trade-offs",
+      "open_question_ids": [],
+      "conflict_ids": []
+    },
+    {
+      "id": "QR-004",
+      "category": "security",
+      "title": "公開候補の重大脆弱性件数",
+      "status": "agreed",
+      "source_claim_ids": [
+        "CLM-004"
+      ],
+      "upstream_refs": [
+        "REQ-SEC-01",
+        "DOM-STATUS-01"
+      ],
+      "workload_link_ids": [],
+      "observation_point": "release candidate dependency and application scan",
+      "metric": {
+        "name": "open_critical_vulnerability_count",
+        "statistic": "count"
+      },
+      "threshold": {
+        "operator": "=",
+        "value": 0,
+        "unit": "vulnerabilities/release"
+      },
+      "time_window": "各本番公開候補",
+      "population": "対象内のアプリケーションと実行時依存",
+      "verification_method": "公開承認前に承認済みの依存・アプリケーション検査器を実行する",
+      "verification_owner": "security approver",
+      "confidence": "high",
+      "design_sensitivity": "a non-zero result blocks release and requires security-control reevaluation",
+      "open_question_ids": [],
+      "conflict_ids": []
+    },
+    {
+      "id": "QR-005",
+      "category": "operability",
+      "title": "サービス影響障害の検知時間",
+      "status": "agreed",
+      "source_claim_ids": [
+        "CLM-005"
+      ],
+      "upstream_refs": [
+        "REQ-OPS-01",
+        "JRN-STATUS-02"
+      ],
+      "workload_link_ids": [],
+      "observation_point": "first failed external probe to incident alert creation",
+      "metric": {
+        "name": "detection_delay",
+        "statistic": "maximum"
+      },
+      "threshold": {
+        "operator": "<=",
+        "value": 5,
+        "unit": "minutes"
+      },
+      "time_window": "サービス時間帯に発生した各サービス影響障害",
+      "population": "合意済み外部監視要求で観測できる障害",
+      "verification_method": "四半期障害訓練で監視失敗時刻と警告時刻を比較する",
+      "verification_owner": "operations owner",
+      "confidence": "high",
+      "design_sensitivity": "if the threshold falls below the probe interval, reevaluate observability trade-offs",
+      "open_question_ids": [],
+      "conflict_ids": []
+    },
+    {
+      "id": "QR-006",
+      "category": "cost",
+      "title": "月間運用費の上限",
+      "status": "hypothesis",
+      "source_claim_ids": [
+        "CLM-006",
+        "CLM-007"
+      ],
+      "upstream_refs": [
+        "REQ-COST-01",
+        "WL-001.peak_rate"
+      ],
+      "workload_link_ids": [
+        "QWL-004"
+      ],
+      "observation_point": "monthly invoice allocation for the status endpoint",
+      "metric": {
+        "name": "allocated_operating_cost",
+        "statistic": "sum"
+      },
+      "threshold": {
+        "operator": "<=",
+        "value": 200,
+        "unit": "USD/month"
+      },
+      "time_window": "提供開始時の利用・負荷における暦月",
+      "population": "対象内の状態確認エンドポイント実行費と可観測性費",
+      "verification_method": "請求明細を配賦し、再現したピークの測定結果と比較する",
+      "verification_owner": "product finance owner",
+      "confidence": "medium",
+      "design_sensitivity": "if workload or unit prices change cost by 10 percent, reevaluate cost alternatives",
+      "open_question_ids": [],
+      "conflict_ids": [
+        "QCON-001"
+      ]
+    }
+  ],
+  "category_coverage": [
+    {
+      "category": "latency",
+      "disposition": "specified",
+      "rationale": "外部応答時間が利用者行程の結果を左右する",
+      "quality_requirement_ids": [
+        "QR-001"
+      ],
+      "open_question_ids": []
+    },
+    {
+      "category": "throughput",
+      "disposition": "specified",
+      "rationale": "提供開始時ピークは設計感度の高い仮説である",
+      "quality_requirement_ids": [
+        "QR-002"
+      ],
+      "open_question_ids": []
+    },
+    {
+      "category": "availability",
+      "disposition": "specified",
+      "rationale": "公開エンドポイントはサービス時間帯を通して観測可能でなければならない",
+      "quality_requirement_ids": [
+        "QR-003"
+      ],
+      "open_question_ids": []
+    },
+    {
+      "category": "consistency",
+      "disposition": "not_applicable",
+      "rationale": "合意済み境界は一時的な集約だけを公開し、複数読取間の保証はない",
+      "quality_requirement_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "category": "durability",
+      "disposition": "not_applicable",
+      "rationale": "エンドポイントは正本となる永続記録を所有しない",
+      "quality_requirement_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "category": "recovery",
+      "disposition": "not_applicable",
+      "rationale": "エンドポイントは復元対象の状態を持たず、サービス可用性は別に扱う",
+      "quality_requirement_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "category": "security",
+      "disposition": "specified",
+      "rationale": "公開攻撃面を対象とする",
+      "quality_requirement_ids": [
+        "QR-004"
+      ],
+      "open_question_ids": []
+    },
+    {
+      "category": "privacy",
+      "disposition": "not_applicable",
+      "rationale": "合意済みの要求・応答境界に個人データは含まれない",
+      "quality_requirement_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "category": "operability",
+      "disposition": "specified",
+      "rationale": "可用性障害を観測するため障害検知が必要である",
+      "quality_requirement_ids": [
+        "QR-005"
+      ],
+      "open_question_ids": []
+    },
+    {
+      "category": "cost",
+      "disposition": "specified",
+      "rationale": "暫定上限がアーキテクチャ比較に影響する",
+      "quality_requirement_ids": [
+        "QR-006"
+      ],
+      "open_question_ids": []
+    }
+  ],
+  "workload_links": [
+    {
+      "id": "QWL-001",
+      "quality_requirement_id": "QR-001",
+      "workload_source_id": "SRC-004",
+      "workload_ref": "WL-001.peak_rate",
+      "workload_status": "hypothesis",
+      "relation": "assumption",
+      "rationale": "応答時間の検証では未確認の提供開始時ピークを再現する必要がある",
+      "conflict_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "id": "QWL-002",
+      "quality_requirement_id": "QR-002",
+      "workload_source_id": "SRC-004",
+      "workload_ref": "WL-001.peak_rate",
+      "workload_status": "hypothesis",
+      "relation": "assumption",
+      "rationale": "同じ未確認ピークを暫定処理量目標として使う",
+      "conflict_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "id": "QWL-003",
+      "quality_requirement_id": "QR-003",
+      "workload_source_id": "SRC-004",
+      "workload_ref": "WL-001.burst_rate",
+      "workload_status": "confirmed",
+      "relation": "supports",
+      "rationale": "確認済みの突発観測が可用性の検証条件を定める",
+      "conflict_ids": [],
+      "open_question_ids": []
+    },
+    {
+      "id": "QWL-004",
+      "quality_requirement_id": "QR-006",
+      "workload_source_id": "SRC-004",
+      "workload_ref": "WL-001.peak_rate",
+      "workload_status": "hypothesis",
+      "relation": "conflicts",
+      "rationale": "予測した提供開始時ピークは、当初は暫定費用上限を超えるように見えた",
+      "conflict_ids": [
+        "QCON-001"
+      ],
+      "open_question_ids": []
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "QCON-001",
+      "left_ref": "QR-006",
+      "right_ref": "QWL-004",
+      "statement": "提供開始時ピークの仮説が暫定月額費用上限を超える可能性がある",
+      "status": "resolved",
+      "resolution": "再現可能な測定では仮説ピーク時に月額180米ドルだった。両方の値をアーキテクチャ比較用の仮説として維持する",
+      "evidence_claim_ids": [
+        "CLM-007"
+      ],
+      "open_question_ids": []
+    }
+  ],
+  "open_questions": [],
+  "handoff": {
+    "ready": true,
+    "blocking_question_ids": [],
+    "quality_requirement_ids": [
+      "QR-001",
+      "QR-002",
+      "QR-003",
+      "QR-004",
+      "QR-005",
+      "QR-006"
+    ],
+    "workload_link_ids": [
+      "QWL-001",
+      "QWL-002",
+      "QWL-003",
+      "QWL-004"
+    ],
+    "conflict_ids": [
+      "QCON-001"
+    ]
+  },
+  "change_log": [
+    {
+      "version": 1,
+      "changed_input_ids": [
+        "SRC-001",
+        "SRC-002",
+        "SRC-003",
+        "SRC-004",
+        "SRC-005",
+        "SRC-006"
+      ],
+      "invalidated_refs": [],
+      "summary": "測定可能な品質要求モデルの初版"
+    }
+  ]
+}

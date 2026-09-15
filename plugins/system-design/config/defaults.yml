@@ -1,0 +1,9 @@
+# cloud.provider is deliberately empty: a repository, local, personal, or scope
+# config must explicitly select aws or gcp. The resolver never treats this as a
+# usable default.
+version: 1
+cloud:
+  provider: ""
+instructions:
+  architecture:
+    directive: Resolve the configured provider before comparing and selecting cloud services

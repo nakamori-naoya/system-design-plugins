@@ -1,0 +1,23 @@
+{
+  "playbook": "design-cloud-architecture",
+  "scenario": "normal",
+  "request": "日本語の正本を作る",
+  "referenced_artifacts": [],
+  "grill": {
+    "status": "completed",
+    "decisions": [
+      {
+        "id": "q1",
+        "question": "対象をどこまで含めるか",
+        "answer": "利用者経路まで含める",
+        "rationale": "目的を観測できるため"
+      }
+    ],
+    "open_questions": []
+  },
+  "expected": {
+    "verification_status": "ready",
+    "output_format": "markdown",
+    "document_count": 1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "discover-workload-model",
+  "version": "0.1.0",
+  "description": "利用行為と負荷特性を根拠付きで発見する",
+  "skills": "./",
+  "metadata": {
+    "harness": {
+      "contractVersion": 1
+    }
+  }
+}

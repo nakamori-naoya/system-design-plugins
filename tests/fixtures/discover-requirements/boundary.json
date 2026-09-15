@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "artifact": {
+    "id": "REQDOC-session-continuity",
+    "version": 1,
+    "subject": "セッション継続",
+    "state": "ready_for_downstream"
+  },
+  "claims": [
+    {
+      "id": "CLM-001",
+      "statement": "利用者が処理途中で接続を失うと入力をやり直している",
+      "classification": "fact",
+      "source": "2026-08障害問い合わせ集計 p.2",
+      "observed_at": "2026-09-01",
+      "owner": "サポート責任者"
+    },
+    {
+      "id": "CLM-002",
+      "statement": "利用者が再接続後に処理を継続できることを対象とする",
+      "classification": "agreed_decision",
+      "source": "要求決定 DR-2026-024",
+      "observed_at": "2026-09-05",
+      "owner": "プロダクト責任者"
+    },
+    {
+      "id": "CLM-003",
+      "statement": "再接続後に保存済み入力から継続できれば受入とする",
+      "classification": "agreed_decision",
+      "source": "要求決定 DR-2026-024",
+      "observed_at": "2026-09-05",
+      "owner": "プロダクト責任者"
+    },
+    {
+      "id": "CLM-004",
+      "statement": "セッション状態の保存にはRedis（製品名）を必須標準として使う",
+      "classification": "agreed_decision",
+      "source": "アーキテクチャ委員会決定 ADR-POLICY-011",
+      "observed_at": "2026-09-06",
+      "owner": "アーキテクチャ委員会"
+    }
+  ],
+  "stakeholders": [
+    {
+      "id": "STK-001",
+      "role": "手続利用者",
+      "relationship": "beneficiary",
+      "interest": "接続断の後も入力をやり直さず継続できる",
+      "claim_ids": [
+        "CLM-001",
+        "CLM-002"
+      ]
+    }
+  ],
+  "purpose": {
+    "beneficiary_ids": [
+      "STK-001"
+    ],
+    "problem": "接続断の後に入力のやり直しが発生する",
+    "desired_outcome": "利用者が再接続後に処理を継続できる",
+    "claim_ids": [
+      "CLM-001",
+      "CLM-002"
+    ]
+  },
+  "observations": {
+    "success": [
+      {
+        "id": "OBS-S-001",
+        "statement": "利用者が再接続後に保存済み入力から継続できる",
+        "observer": "手続利用者",
+        "classification": "agreed_decision",
+        "claim_ids": [
+          "CLM-003"
+        ],
+        "verification_method": "接続断を含む受入観察"
+      }
+    ],
+    "failure": [
+      {
+        "id": "OBS-F-001",
+        "statement": "利用者が再接続後に入力を最初からやり直す",
+        "observer": "手続利用者",
+        "classification": "fact",
+        "claim_ids": [
+          "CLM-001"
+        ],
+        "verification_method": "接続断問い合わせの再入力有無を集計する"
+      }
+    ]
+  },
+  "scope": {
+    "in": [
+      {
+        "id": "SCP-I-001",
+        "statement": "接続断後の処理継続",
+        "claim_ids": [
+          "CLM-002"
+        ]
+      }
+    ],
+    "out": [
+      {
+        "id": "SCP-O-001",
+        "statement": "手続内容と業務判断の変更",
+        "claim_ids": [
+          "CLM-002"
+        ]
+      }
+    ]
+  },
+  "system_boundary": {
+    "responsibilities": [
+      {
+        "id": "BND-S-001",
+        "statement": "保存済み入力を再接続した利用者へ引き継ぐ",
+        "claim_ids": [
+          "CLM-002",
+          "CLM-003"
+        ]
+      }
+    ],
+    "external_parties": [
+      {
+        "id": "BND-E-001",
+        "statement": "利用者が再接続して処理継続を選ぶ",
+        "claim_ids": [
+          "CLM-002"
+        ]
+      }
+    ]
+  },
+  "constraints": [
+    {
+      "id": "CON-001",
+      "statement": "セッション状態の保存にRedis（製品名）を使用する",
+      "kind": "technical",
+      "classification": "agreed_decision",
+      "claim_ids": [
+        "CLM-004"
+      ],
+      "verification_method": "委員会決定の対象、時点、必須性を照合する",
+      "impact": "後続設計の候補範囲を拘束する"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "statement": "利用者は再接続後に保存済み入力から処理を継続できる",
+      "beneficiary_ids": [
+        "STK-001"
+      ],
+      "claim_ids": [
+        "CLM-001",
+        "CLM-002",
+        "CLM-003"
+      ],
+      "success_observation_ids": [
+        "OBS-S-001"
+      ],
+      "verification_method": "接続断を含む対象手続の受入観察",
+      "impact": {
+        "if_met": "利用者が入力をやり直さず処理を継続できる",
+        "if_unmet": "利用者が入力を失い手続を中断する"
+      },
+      "affects": [
+        "workload",
+        "quality",
+        "cloud_design"
+      ]
+    }
+  ],
+  "hypotheses": [],
+  "open_questions": [],
+  "solution_inputs": [
+    {
+      "id": "HOW-001",
+      "statement": "Redis（製品名）を使う",
+      "classification": "constraint",
+      "claim_ids": [
+        "CLM-004"
+      ],
+      "rationale": "決定権者、対象、決定時点、必須性が揃った組織の技術制約である",
+      "linked_id": "CON-001",
+      "routed_to": "design-cloud-architecture"
+    }
+  ],
+  "handoff": {
+    "ready": true,
+    "blocking_question_ids": [],
+    "downstream": {
+      "workload": [
+        "REQ-001"
+      ],
+      "quality": [
+        "REQ-001"
+      ],
+      "cloud_design": [
+        "REQ-001",
+        "CON-001"
+      ]
+    }
+  }
+}

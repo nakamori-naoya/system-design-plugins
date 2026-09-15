@@ -1,0 +1,81 @@
+{
+  "scenarios": [
+    {
+      "id": "workload-success",
+      "kind": "success",
+      "input": {
+        "subject": "注文受付イベント",
+        "sources": [
+          "2026年第2四半期の遠隔測定",
+          "保持方針",
+          "年次計画の予測"
+        ]
+      },
+      "expected": {
+        "decision": "create_artifact",
+        "artifact_fixture": "success.json",
+        "average_rate": 1,
+        "peak_rate": 25,
+        "distribution": "skewed",
+        "must_include": [
+          "burst_rate",
+          "growth_rate",
+          "fan_out",
+          "hot_key_share",
+          "design_inputs"
+        ]
+      }
+    },
+    {
+      "id": "workload-out-of-scope",
+      "kind": "out_of_scope",
+      "input": {
+        "request": "95パーセンタイルの応答時間を200ミリ秒に決め、AWSのインスタンス数を選んで",
+        "sources": []
+      },
+      "expected": {
+        "decision": "stop_and_route",
+        "artifact_fixture": null,
+        "reason": "依頼の中心がSLO決定とクラウド処理容量の選定であり、負荷特性の発見ではない",
+        "routes": [
+          "discover-quality-requirements",
+          "design-cloud-architecture"
+        ]
+      }
+    },
+    {
+      "id": "workload-metadata-boundary",
+      "kind": "boundary",
+      "base": {
+        "statement": "注文イベントは平均1イベント毎秒",
+        "condition": "対象日、暦日86,400秒、全注文イベント、算出元の日次件数がある"
+      },
+      "one_change": {
+        "condition": "集計の時間窓だけが不明"
+      },
+      "expected": {
+        "base_status": "confirmed",
+        "changed_status": "unresolved",
+        "changed_value": null,
+        "blocking_question": "日次件数を集計した対象期間はいつか",
+        "must_not": "時間窓を推測して平均またはピークを確定しない"
+      }
+    },
+    {
+      "id": "workload-design-input-boundary",
+      "kind": "boundary",
+      "base": {
+        "statement": "公開規模から推定した毎秒件数を容量比較に使う",
+        "condition": "採用仮定、適用範囲、要求参照、構成上の関心、見直し条件、適用外がある"
+      },
+      "one_change": {
+        "condition": "公開値と計算式だけがあり、要求参照と構成上の関心がない"
+      },
+      "expected": {
+        "base_status": "design_input",
+        "changed_status": "research_material_only",
+        "must_not": "調査結果の要約だけで利用負荷モデルを完了しない"
+      }
+    }
+  ]
+}

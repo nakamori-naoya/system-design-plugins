@@ -1,0 +1,6 @@
+version: 1
+cloud:
+  provider: aws
+instructions:
+  architecture:
+    directive: Resolve provider before architecture design

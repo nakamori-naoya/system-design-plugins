@@ -1,0 +1,1373 @@
+{
+  "schema_version": 2,
+  "artifact": {
+    "id": "ARCH-status-platform",
+    "version": 1,
+    "subject": "状態確認基盤のクラウドアーキテクチャ",
+    "state": "ready_for_implementation_handoff"
+  },
+  "input_artifacts": [
+    {
+      "id": "SRC-001",
+      "kind": "requirements_baseline",
+      "locator": "/evidence/status.requirements.json",
+      "version_or_hash": "version:2",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-002",
+      "kind": "logical_design",
+      "locator": "/evidence/status-logical-design.md",
+      "version_or_hash": "sha256:logical-001",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-003",
+      "kind": "workload",
+      "locator": "/evidence/status.workload.json",
+      "version_or_hash": "version:3",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "SRC-004",
+      "kind": "quality",
+      "locator": "/evidence/status.quality.json",
+      "version_or_hash": "version:1",
+      "observed_at": "2026-09-03"
+    },
+    {
+      "id": "SRC-005",
+      "kind": "organization",
+      "locator": "/evidence/platform-team.md",
+      "version_or_hash": "sha256:org-001",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "SRC-006",
+      "kind": "operations",
+      "locator": "/evidence/operations-policy.md",
+      "version_or_hash": "sha256:ops-001",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "SRC-007",
+      "kind": "budget",
+      "locator": "/evidence/budget-decision.md",
+      "version_or_hash": "sha256:budget-001",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "SRC-008",
+      "kind": "runtime_config",
+      "locator": "/evidence/system-design.resolved.yml",
+      "version_or_hash": "sha256:provider-aws-001",
+      "observed_at": "2026-09-14"
+    },
+    {
+      "id": "SRC-009",
+      "kind": "terminology",
+      "locator": "/evidence/status-platform.glossary.json",
+      "version_or_hash": "version:1",
+      "observed_at": "2026-09-01"
+    }
+  ],
+  "provider_resolution": {
+    "provider": "aws",
+    "source_artifact_id": "SRC-008",
+    "resolved_config": "/evidence/system-design.resolved.yml",
+    "config_fingerprint": "sha256:provider-aws-001"
+  },
+  "drivers": [
+    {
+      "id": "DRV-001",
+      "kind": "requirement",
+      "upstream_ref": "REQ-STATUS-01",
+      "source_artifact_id": "SRC-001",
+      "state": "confirmed",
+      "statement": "公開状態確認要求は、現在公開されている状態を返さなければならない",
+      "observed_at": "2026-09-01",
+      "impact": "外部から到達可能なサービス境界が必要になる"
+    },
+    {
+      "id": "DRV-002",
+      "kind": "quality",
+      "upstream_ref": "QR-001",
+      "source_artifact_id": "SRC-004",
+      "state": "agreed",
+      "statement": "応答時間の95パーセンタイルを300ミリ秒以下とする",
+      "observed_at": "2026-09-03",
+      "impact": "入口、ネットワーク、計算処理、データ経路の評価根拠になる"
+    },
+    {
+      "id": "DRV-003",
+      "kind": "workload",
+      "upstream_ref": "WL-001.peak_rate",
+      "source_artifact_id": "SRC-003",
+      "state": "hypothesis",
+      "statement": "提供開始時のピークを毎秒250要求と見込む",
+      "observed_at": "2026-09-01",
+      "impact": "すべての処理容量と費用の検証は、この仮説を条件とする"
+    }
+  ],
+  "constraints": [
+    {
+      "id": "CON-001",
+      "type": "location",
+      "statement": "本番データはリージョンA内に保持する",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-001",
+      "source_ref": "CON-RESIDENCY-01",
+      "observed_at": "2026-09-01"
+    },
+    {
+      "id": "CON-002",
+      "type": "operations",
+      "statement": "基盤チームはクラウドの管理面を1つだけ運用する",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-006",
+      "source_ref": "OPS-02",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "CON-003",
+      "type": "budget",
+      "statement": "月間運用費の暫定上限を200米ドルとする",
+      "classification": "hypothesis",
+      "source_artifact_id": "SRC-007",
+      "source_ref": "BUDGET-DRAFT-01",
+      "observed_at": "2026-09-02"
+    },
+    {
+      "id": "CON-004",
+      "type": "organization",
+      "statement": "リポジトリ設定で解決したプロバイダーはAWSである",
+      "classification": "agreed_decision",
+      "source_artifact_id": "SRC-008",
+      "source_ref": "cloud.provider",
+      "observed_at": "2026-09-14"
+    }
+  ],
+  "scope": {
+    "system_boundary": "public status platform from edge ingress through authoritative status persistence",
+    "in_scope": [
+      "cloud runtime and data services",
+      "identity, observability, backup, and delivery paths"
+    ],
+    "out_of_scope": [
+      "application class and method design",
+      "logical table and index design",
+      "Terraform implementation"
+    ],
+    "external_responsibilities": [
+      "status consumer owns request retry policy",
+      "aws owns managed service control planes"
+    ]
+  },
+  "deployment_model": {
+    "mode": "single_cloud",
+    "provider_scope": [
+      "aws"
+    ],
+    "decision_state": "decided",
+    "constraint_ids": [
+      "CON-001",
+      "CON-002",
+      "CON-003",
+      "CON-004"
+    ],
+    "alternative_id": "ALT-001",
+    "open_question_ids": []
+  },
+  "alternatives": [
+    {
+      "id": "ALT-001",
+      "name": "AWSの管理サービスによる単一クラウド",
+      "deployment_mode": "single_cloud",
+      "provider_scope": [
+        "aws"
+      ],
+      "driver_ids": [
+        "DRV-001",
+        "DRV-002",
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "advantages": [
+        "単一の管理面が運用制約に合う",
+        "管理サービスにより共通運用作業を減らせる"
+      ],
+      "disadvantages": [
+        "プロバイダー固有の運用依存が生じる",
+        "リージョン障害は復旧設計の対象として残る"
+      ],
+      "risks": [
+        "利用・負荷のピークは仮説のままである",
+        "単価変更により暫定予算を超える可能性がある"
+      ],
+      "cost_effect": "採用した全経路を月額200米ドルの仮説に対して測定する",
+      "operability_effect": "基盤チームの既存の単一管理面の責任範囲を利用する",
+      "status": "chosen",
+      "rejection_reason": null
+    },
+    {
+      "id": "ALT-002",
+      "name": "GCPの管理サービスによる単一クラウド",
+      "deployment_mode": "single_cloud",
+      "provider_scope": [
+        "gcp"
+      ],
+      "driver_ids": [
+        "DRV-001",
+        "DRV-002",
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "advantages": [
+        "同じ論理境界を満たせる",
+        "管理サービスの候補を提供できる"
+      ],
+      "disadvantages": [
+        "2つ目の運用方式が必要になる",
+        "比較測定の根拠がない"
+      ],
+      "risks": [
+        "移行の学習費用が生じる",
+        "応答時間と費用の前提が未検証である"
+      ],
+      "cost_effect": "比較を再開する前に新しい費用測定が必要になる",
+      "operability_effect": "現在の単一管理面というチーム制約と矛盾する",
+      "status": "rejected",
+      "rejection_reason": "運用制約と測定根拠の不足が、未検証の利点を上回る"
+    },
+    {
+      "id": "ALT-003",
+      "name": "AWSとGCPを併用するマルチクラウド",
+      "deployment_mode": "multi_cloud",
+      "provider_scope": [
+        "aws",
+        "gcp"
+      ],
+      "driver_ids": [
+        "DRV-001",
+        "DRV-002",
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "advantages": [
+        "選択したプロバイダーの障害形態を分離できる",
+        "プロバイダーからの移行選択肢を持てる"
+      ],
+      "disadvantages": [
+        "配布、識別、可観測性、データ運用が二重になる",
+        "プロバイダー間の整合性判断が必要になる"
+      ],
+      "risks": [
+        "運用の複雑さが可用性を下げる可能性がある",
+        "費用が暫定上限を超える"
+      ],
+      "cost_effect": "固定サービス費と検証費が二重になる",
+      "operability_effect": "2つの管理面とプロバイダー横断の障害対応責任が必要になる",
+      "status": "rejected",
+      "rejection_reason": "追加の障害領域を正当化する要求がなく、運用と予算の制約に反する"
+    }
+  ],
+  "selections": [
+    {
+      "id": "SEL-001",
+      "category": "provider",
+      "status": "selected",
+      "choice": "aws",
+      "provider": "aws",
+      "service": "AWSアカウント境界",
+      "role": "クラウド管理と契約の境界",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003",
+        "CON-004"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "リポジトリの実行時設定はAWSを解決し、運用制約は計画済み検証の対象として残る",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-002",
+      "category": "region_az",
+      "status": "selected",
+      "choice": "リージョンA内の2障害区画",
+      "provider": "aws",
+      "service": "リージョン内の障害区画配置",
+      "role": "所在地制約の順守と障害区画の分離",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "リージョンAは必須であり、2区画により検証可能な区画障害経路を示せる",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-003",
+      "category": "compute",
+      "status": "selected",
+      "choice": "管理コンテナ実行基盤",
+      "provider": "aws",
+      "service": "AWS管理コンテナ",
+      "role": "状態を持たない状態確認アプリケーションを実行する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "状態を持たない実行基盤は論理境界に合い、仮説のピークで負荷検証する必要がある",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-004",
+      "category": "network",
+      "status": "selected",
+      "choice": "入口を制御した非公開アプリケーションネットワーク",
+      "provider": "aws",
+      "service": "AWS仮想ネットワーク",
+      "role": "入口、アプリケーション、データ、管理の信頼境界を分離する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "明示した信頼境界が外部要求と内部データの流れを支える",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-005",
+      "category": "storage",
+      "status": "selected",
+      "choice": "リージョン内オブジェクト保管",
+      "provider": "aws",
+      "service": "AWSオブジェクト保管",
+      "role": "変更不能な出力物とバックアップを保持する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "物体の保持をリージョンA内に限定し、利用・負荷の保持入力で検証する",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-006",
+      "category": "database",
+      "status": "selected",
+      "choice": "管理リレーショナルデータベース",
+      "provider": "aws",
+      "service": "AWS管理リレーショナルデータベース",
+      "role": "変更していない論理状態データモデルを保持する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "入力されたリレーショナル論理設計を、表や索引を変えずに対応付ける",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-007",
+      "category": "messaging",
+      "status": "selected",
+      "choice": "永続管理キュー",
+      "provider": "aws",
+      "service": "AWS管理キュー",
+      "role": "状態変更通知を同期読取から分離する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "論理的な非同期通知と配信先数を、要求の応答時間とは独立して検証する",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-008",
+      "category": "identity",
+      "status": "selected",
+      "choice": "管理された処理識別",
+      "provider": "aws",
+      "service": "AWS処理識別",
+      "role": "固定認証情報を使わず構成要素からサービスへの呼出しを認証する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "識別の信頼範囲を選択したネットワークと運用方式に限定する",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-009",
+      "category": "edge",
+      "status": "selected",
+      "choice": "管理された外部入口",
+      "provider": "aws",
+      "service": "AWS外部入口",
+      "role": "公開要求を終端し、入口方針を適用する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "外部入口から応答までの観測点を、応答時間の品質根拠へ直接追跡する",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-010",
+      "category": "observability",
+      "status": "selected",
+      "choice": "管理された指標、記録、追跡",
+      "provider": "aws",
+      "service": "AWS可観測性",
+      "role": "品質を測定し、障害経路を検知する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "選択した遠隔測定は、品質要求の観測点と利用・負荷の時間窓を正確に測定する必要がある",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-011",
+      "category": "backup_dr",
+      "status": "selected",
+      "choice": "復元検証付きリージョン内バックアップ",
+      "provider": "aws",
+      "service": "AWSバックアップ",
+      "role": "合意済みリージョン内でデータベースと保持物を保護する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "バックアップは計画済みの復旧検証とし、上流にない目標復旧時点（RPO）を捏造しない",
+      "open_question_ids": []
+    },
+    {
+      "id": "SEL-012",
+      "category": "delivery",
+      "status": "selected",
+      "choice": "署名済み成果物の配置経路",
+      "provider": "aws",
+      "service": "AWS配置経路",
+      "role": "検証済みアプリケーション成果物を両区画へ配置する",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ],
+      "rationale": "単一の制御された配置経路が、運用制約と2区画配置に合う",
+      "open_question_ids": []
+    }
+  ],
+  "adrs": [
+    {
+      "id": "ADR-001",
+      "status": "accepted",
+      "title": "リージョンAでAWS管理サービスによる単一クラウド構成を採用する",
+      "context": "確認済みの外部要求と応答時間目標を、暫定のピークと予算の下で単一管理面により満たす必要がある",
+      "decision": "計画済みの検証を条件に、ALT-001と12件の機能領域選定を採用する",
+      "alternative_ids": [
+        "ALT-001",
+        "ALT-002",
+        "ALT-003"
+      ],
+      "selection_ids": [
+        "SEL-001",
+        "SEL-002",
+        "SEL-003",
+        "SEL-004",
+        "SEL-005",
+        "SEL-006",
+        "SEL-007",
+        "SEL-008",
+        "SEL-009",
+        "SEL-010",
+        "SEL-011",
+        "SEL-012"
+      ],
+      "driver_ids": [
+        "DRV-001",
+        "DRV-002",
+        "DRV-003"
+      ],
+      "positive_consequences": [
+        "リージョンAと単一管理面の制約に合う",
+        "同期経路と非同期経路を独立して検証できる"
+      ],
+      "negative_consequences": [
+        "AWSへの依存を受け入れる",
+        "検証まで利用・負荷と予算の仮説を維持する"
+      ],
+      "follow_ups": [
+        "本番投入前に負荷と耐障害性を検証する",
+        "ピークまたは費用の仮説が変わったら判断を見直す"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    }
+  ],
+  "diagram": {
+    "notation": "mermaid",
+    "editable": true,
+    "source": "flowchart LR\n  subgraph BND001[\"BND-001 システム境界 / AWS\"]\n    subgraph AU001[\"AU-001 リージョン入口単位\"]\n      NOD001[\"NOD-001 プロバイダーアカウント\"]\n      NOD002[\"NOD-002 リージョンと障害区画\"]\n      NOD004[\"NOD-004 ネットワーク\"]\n      NOD009[\"NOD-009 外部入口\"]\n    end\n    subgraph BND002[\"BND-002 アプリケーション信頼境界\"]\n      subgraph AU002[\"AU-002 アプリケーション処理単位\"]\n        NOD003[\"NOD-003 計算処理\"]\n        NOD007[\"NOD-007 キュー\"]\n        NOD008[\"NOD-008 識別\"]\n        NOD010[\"NOD-010 可観測性\"]\n        NOD012[\"NOD-012 配置\"]\n      end\n      subgraph AU003[\"AU-003 データ保護単位\"]\n        NOD005[\"NOD-005 オブジェクト保管\"]\n        NOD006[\"NOD-006 データベース\"]\n        NOD011[\"NOD-011 バックアップ\"]\n      end\n    end\n  end\n  subgraph BND003[\"BND-003 外部関係者\"]\n    subgraph AU004[\"AU-004 外部利用者単位\"]\n      NOD013[\"NOD-013 状態情報の利用者\"]\n    end\n  end\n  NOD013 -->|\"FLW-001 状態確認要求 / 同期 HTTPS\"| NOD009\n  NOD009 -->|\"FLW-002 転送済み要求 / 同期 HTTPS\"| NOD003\n  NOD003 -->|\"FLW-003 状態読取 / 同期 SQL\"| NOD006\n  NOD003 -->|\"FLW-004 変更イベント / 非同期メッセージ\"| NOD007\n  NOD003 -->|\"FLW-005 遠隔測定 / 非同期 OTLP\"| NOD010\n",
+    "boundaries": [
+      {
+        "id": "BND-001",
+        "label": "状態確認基盤のシステム境界",
+        "kind": "system",
+        "environment": "cloud",
+        "provider": "aws",
+        "parent_boundary_id": null
+      },
+      {
+        "id": "BND-002",
+        "label": "アプリケーションの信頼境界",
+        "kind": "trust_zone",
+        "environment": "cloud",
+        "provider": "aws",
+        "parent_boundary_id": "BND-001"
+      },
+      {
+        "id": "BND-003",
+        "label": "外部利用者の境界",
+        "kind": "external",
+        "environment": "external_party",
+        "provider": null,
+        "parent_boundary_id": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "NOD-001",
+        "label": "AWSアカウント",
+        "kind": "component",
+        "selection_id": "SEL-001",
+        "boundary_id": "BND-001",
+        "availability_unit_id": "AU-001"
+      },
+      {
+        "id": "NOD-002",
+        "label": "リージョンAの障害区画",
+        "kind": "component",
+        "selection_id": "SEL-002",
+        "boundary_id": "BND-001",
+        "availability_unit_id": "AU-001"
+      },
+      {
+        "id": "NOD-003",
+        "label": "管理コンテナ",
+        "kind": "component",
+        "selection_id": "SEL-003",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-002"
+      },
+      {
+        "id": "NOD-004",
+        "label": "仮想ネットワーク",
+        "kind": "component",
+        "selection_id": "SEL-004",
+        "boundary_id": "BND-001",
+        "availability_unit_id": "AU-001"
+      },
+      {
+        "id": "NOD-005",
+        "label": "オブジェクト保管",
+        "kind": "component",
+        "selection_id": "SEL-005",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-003"
+      },
+      {
+        "id": "NOD-006",
+        "label": "リレーショナルデータベース",
+        "kind": "component",
+        "selection_id": "SEL-006",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-003"
+      },
+      {
+        "id": "NOD-007",
+        "label": "永続キュー",
+        "kind": "component",
+        "selection_id": "SEL-007",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-002"
+      },
+      {
+        "id": "NOD-008",
+        "label": "処理識別",
+        "kind": "component",
+        "selection_id": "SEL-008",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-002"
+      },
+      {
+        "id": "NOD-009",
+        "label": "外部入口",
+        "kind": "component",
+        "selection_id": "SEL-009",
+        "boundary_id": "BND-001",
+        "availability_unit_id": "AU-001"
+      },
+      {
+        "id": "NOD-010",
+        "label": "可観測性",
+        "kind": "component",
+        "selection_id": "SEL-010",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-002"
+      },
+      {
+        "id": "NOD-011",
+        "label": "バックアップ",
+        "kind": "component",
+        "selection_id": "SEL-011",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-003"
+      },
+      {
+        "id": "NOD-012",
+        "label": "配置経路",
+        "kind": "component",
+        "selection_id": "SEL-012",
+        "boundary_id": "BND-002",
+        "availability_unit_id": "AU-002"
+      },
+      {
+        "id": "NOD-013",
+        "label": "状態情報の利用者",
+        "kind": "external",
+        "selection_id": null,
+        "boundary_id": "BND-003",
+        "availability_unit_id": "AU-004"
+      }
+    ],
+    "flows": [
+      {
+        "id": "FLW-001",
+        "from_node_id": "NOD-013",
+        "to_node_id": "NOD-009",
+        "data": "状態確認要求",
+        "synchrony": "sync",
+        "protocol": "HTTPS",
+        "trust_boundary_crossing": true,
+        "failure_behavior": "利用者は範囲を定めたエラーを受け取り、契約に従って再試行できる"
+      },
+      {
+        "id": "FLW-002",
+        "from_node_id": "NOD-009",
+        "to_node_id": "NOD-003",
+        "data": "検証済み状態確認要求",
+        "synchrony": "sync",
+        "protocol": "HTTPS",
+        "trust_boundary_crossing": true,
+        "failure_behavior": "外部入口は信頼境界を迂回せずエラーを返す"
+      },
+      {
+        "id": "FLW-003",
+        "from_node_id": "NOD-003",
+        "to_node_id": "NOD-006",
+        "data": "現在状態の読取",
+        "synchrony": "sync",
+        "protocol": "SQL over TLS",
+        "trust_boundary_crossing": false,
+        "failure_behavior": "アプリケーションは定義済みの利用不可応答を返す"
+      },
+      {
+        "id": "FLW-004",
+        "from_node_id": "NOD-003",
+        "to_node_id": "NOD-007",
+        "data": "状態変更イベント",
+        "synchrony": "async",
+        "protocol": "managed message protocol",
+        "trust_boundary_crossing": false,
+        "failure_behavior": "送信元はキュー拒否を記録し、通知処理を停止する"
+      },
+      {
+        "id": "FLW-005",
+        "from_node_id": "NOD-003",
+        "to_node_id": "NOD-010",
+        "data": "指標、記録、追跡情報",
+        "synchrony": "async",
+        "protocol": "OTLP",
+        "trust_boundary_crossing": false,
+        "failure_behavior": "アプリケーションは継続し、遠隔測定の欠落により運用警告を発報する"
+      }
+    ],
+    "external_dependencies": [
+      {
+        "node_id": "NOD-013",
+        "owner": "状態情報の利用者",
+        "contract_ref": "EXT-CONTRACT-01"
+      }
+    ],
+    "availability_units": [
+      {
+        "id": "AU-001",
+        "label": "リージョン入口単位",
+        "node_ids": [
+          "NOD-001",
+          "NOD-002",
+          "NOD-004",
+          "NOD-009"
+        ],
+        "failure_scope": "リージョンAの入口またはネットワーク障害"
+      },
+      {
+        "id": "AU-002",
+        "label": "アプリケーション処理単位",
+        "node_ids": [
+          "NOD-003",
+          "NOD-007",
+          "NOD-008",
+          "NOD-010",
+          "NOD-012"
+        ],
+        "failure_scope": "1つのアプリケーションまたは補助制御経路"
+      },
+      {
+        "id": "AU-003",
+        "label": "データ保護単位",
+        "node_ids": [
+          "NOD-005",
+          "NOD-006",
+          "NOD-011"
+        ],
+        "failure_scope": "データベース、保管、バックアップの経路"
+      },
+      {
+        "id": "AU-004",
+        "label": "外部利用者単位",
+        "node_ids": [
+          "NOD-013"
+        ],
+        "failure_scope": "利用者所有のネットワークまたは再試行動作"
+      }
+    ]
+  },
+  "failure_scenarios": [
+    {
+      "id": "FAIL-001",
+      "trigger": "リージョンAの1障害区画がアプリケーション通信の受付を停止する",
+      "affected_availability_unit_ids": [
+        "AU-001",
+        "AU-002"
+      ],
+      "affected_selection_ids": [
+        "SEL-002",
+        "SEL-003",
+        "SEL-004",
+        "SEL-009",
+        "SEL-010"
+      ],
+      "detection": "外部監視要求と区画単位の要求・エラー指標で障害区画を特定する",
+      "degradation_behavior": "外部入口は障害区画への転送を止め、残存区画の処理容量を利用・負荷仮説に照らして監視する",
+      "recovery": "障害区画への配置を復旧し、正常性と応答時間を検証してから通信を受け入れる",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    }
+  ],
+  "traceability": [
+    {
+      "selection_id": "SEL-001",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003",
+        "CON-004"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-002",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-003",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-004",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-005",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-006",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-007",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-008",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-009",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-010",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-011",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    },
+    {
+      "selection_id": "SEL-012",
+      "requirement_driver_ids": [
+        "DRV-001"
+      ],
+      "quality_driver_ids": [
+        "DRV-002"
+      ],
+      "workload_driver_ids": [
+        "DRV-003"
+      ],
+      "constraint_ids": [
+        "CON-001",
+        "CON-002",
+        "CON-003"
+      ],
+      "adr_ids": [
+        "ADR-001"
+      ],
+      "verification_ids": [
+        "VER-001"
+      ]
+    }
+  ],
+  "verification_plan": [
+    {
+      "id": "VER-001",
+      "kind": "architecture_review",
+      "objective": "追跡可能性、Mermaid構成、障害時の挙動、暫定のピーク・費用仮説を検証する",
+      "method": "すべての選定追跡を確認し、実装環境で計画済みの負荷試験と区画障害試験を実行する",
+      "expected_evidence": "確認記録、負荷報告、障害時系列、復旧記録、費用配賦",
+      "owner": "アーキテクチャ確認責任者",
+      "status": "planned",
+      "evidence_refs": [],
+      "trace_refs": [
+        "ADR-001",
+        "FAIL-001",
+        "SEL-001",
+        "SEL-002",
+        "SEL-003",
+        "SEL-004",
+        "SEL-005",
+        "SEL-006",
+        "SEL-007",
+        "SEL-008",
+        "SEL-009",
+        "SEL-010",
+        "SEL-011",
+        "SEL-012"
+      ]
+    }
+  ],
+  "open_questions": [],
+  "terminology": {
+    "source": {
+      "locator": "/evidence/status-platform-glossary.md",
+      "version": 1
+    },
+    "usages": [
+      {
+        "subject_id": "DRV-001",
+        "preferred_terms": [
+          "公開状態"
+        ]
+      }
+    ]
+  },
+  "change_log": [
+    {
+      "version": 1,
+      "changed_input_ids": [
+        "SRC-001",
+        "SRC-002",
+        "SRC-003",
+        "SRC-004",
+        "SRC-005",
+        "SRC-006",
+        "SRC-007",
+        "SRC-008"
+      ],
+      "invalidated_refs": [],
+      "summary": "解決済みプロバイダーAWSを追跡したクラウドアーキテクチャの初版"
+    }
+  ]
+}
