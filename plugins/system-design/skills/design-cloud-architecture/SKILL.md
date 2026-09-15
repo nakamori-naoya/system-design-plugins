@@ -1,9 +1,11 @@
 ---
-name: internal-design-cloud-architecture
+name: design-cloud-architecture
 description: システム要求の基準資料、論理設計、利用・負荷モデル、品質要求、組織・運用・予算制約から、根拠付きのクラウド・サービス選定、代替案比較、ADR、要求トレーサビリティ、障害・縮退経路、編集可能なMermaidインフラ構成図を一つのクラウドアーキテクチャ正本へ保存する。クラウド案を比較して採用構成を決めたい、人気ではなく要求からサービスを選びたいときに使う。
 ---
 
 # design-cloud-architecture
+
+[工程順序の正本](playbook.yml)を最初に読み、同じagentが\`steps\`を宣言順に実行する。YAMLは工程順序と実値依存を決め、各工程の判断内容と根拠はこの本文と参照資料を実読して評価する。実行設定をこのskillが生成した後に失敗または停止する場合は、未実行の認知工程へ進まず`cleanup-provider-configuration`だけを実行してから報告する。外部供給設定ではcleanup runtimeを呼ばない。失敗を成功扱いせず、完了工程、根拠、未決、設定の所有・cleanup結果を残し、再開時は最初の未完了工程から続ける。
 
 検査済みの要求、論理境界、負荷、品質要求、制約を受け取り、選定、比較、決定、構成図、失敗時挙動、追跡、検証計画を一体として監査できる一つのクラウドアーキテクチャ正本を返す。
 
@@ -11,34 +13,24 @@ description: システム要求の基準資料、論理設計、利用・負荷�
 
 ## 実行設定
 
-入力に完全な`provider_resolution`がある場合は、プロバイダー、解決済み設定の絶対パス、内容指紋、元設定パスを検査して変更せず使う。入力に`provider_resolution`がない場合は、配布パッケージの配置先を解決し、次の処理で実行時設定を一度だけ解決する。この処理で作った設定は、このskillが所有して終了時に後片付けする。
+YAMLの`resolve-provider-configuration`工程へ公開呼出しの`request` objectをそのまま渡す。完全な`provider_resolution`がある場合、同工程の専用adapterは`provider`、選択元の永続`config_locator`、そのfile内容と一致する`config_fingerprint`を検査し、`resolved_provider_configuration`へ変更せず返す。所有は`external_input`、`transient_provider_configuration_path`は`null`である。同じrequestに`target_repository`もあっても、この枝では使わず外部供給値を優先する。
 
-```bash
-BUNDLE_ROOT="${CLAUDE_PLUGIN_ROOT:-/absolute/path/to/system-design}"
-if [ -d "${BUNDLE_ROOT}/skills/design-cloud-architecture" ]; then
-  PLUGIN_ROOT="$BUNDLE_ROOT"
-else
-  PLUGIN_ROOT="$(cd "${BUNDLE_ROOT}/../.." && pwd)"
-fi
-CFG_FILE=$(bash "${PLUGIN_ROOT}/scripts/prepare.sh" "$(pwd)") || exit 2
-PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FILE") || {
-  python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"
-  exit 2
-}
-```
+`request.provider_resolution`がない場合だけ、専用adapterは同じobjectの`target_repository`にある既存directoryの絶対pathをpackage既存の設定runtimeへ渡す。runtimeが返す解決済み一時設定の絶対path、`.resolution.selected_config`、`.resolution.config_fingerprint`、`cloud.provider`を読み、前3値を同じ`resolved_provider_configuration`形へ正規化する。所有は`generated_by_this_skill`、一時pathは`transient_provider_configuration_path`としてcleanupまでだけ保持する。adapterはskill隣接の公開実行入口からpackage既存runtimeへ固定接続するだけで、設定解決・削除ロジックを複製しない。公開SKILLがplugin rootやpackage runtime pathを推測しない。
 
-入力に完全な解決結果がない場合、この解決は説明例ではなく必須処理である。`cloud.provider`が未指定または`aws`/`gcp`以外なら暗黙既定値を使わず停止する。解決済み設定の絶対パス（機械キー: `resolved_config`）、選択元の内容指紋（`config_fingerprint`）、`.resolution.selected_config`、解決した`PROVIDER`を入力根拠として正本へ残す。入力で受け取った解決結果を使う場合も同じ値を変更せず成果物と検証へ渡す。
+`provider`が未指定または`aws`/`gcp`以外、永続locatorが絶対pathの通常fileでない、指紋が実内容と一致しない、生成runtimeが非zero、一時pathが絶対pathの通常fileでない、ownershipが2語彙以外、または来歴が不完全なら後続の認知工程へ進まない。生成済み一時設定がある場合はYAMLのcleanup工程だけを実行して失敗を報告する。正本には永続する`config_locator`、選択元の内容指紋`config_fingerprint`、解決した`provider`を残し、cleanup対象の一時file pathは残さない。
 
 ## 入力
 
+- 公開呼出しの`request` object。依頼本文に加え、完全な`provider_resolution`、または実行設定を解決する既存directoryの絶対pathである`target_repository`を持つ。完全な`provider_resolution`があるときはそれを優先して非所有入力として使い、`target_repository`は使わない。無いときだけ`target_repository`から解決する。どちらも無い、または選んだ枝の値が不正なら推測せず停止する。
 - システム要求の基準資料。要求、境界、制約のID、状態、根拠、版またはハッシュを識別できること。
 - 論理設計。システム/構成要素の責任境界、データの流れ、外部依存を含むが、クラウド製品を前提にしなくてよい。
 - 利用・負荷モデル。母集団、平均、ピーク、突発、データ量、保持、成長、分布、配信先数、集中キーのIDと状態。
 - 品質要求。観測点、指標、閾値、時間窓、母集団、検証方法、合意状態を持つQR ID。
 - 組織、運用、予算、法令・規約順守、所在地、既存契約の制約。
 - 複数成果物で共有する業務用語と暫定境界がある場合は、その一つのMarkdown用語正本の所在、版、参照する日本語の推奨用語名。
-- 解決済み実行設定。`cloud.provider`は`aws`または`gcp`であり、解決済み設定の絶対パス、内容ハッシュ、元設定パスを識別できること。
+- `request.provider_resolution`で供給する実行設定の来歴。`provider`は`aws`または`gcp`であり、選択元の永続設定を指す`config_locator`、内容ハッシュ`config_fingerprint`を識別できること。供給しない場合は`request.target_repository`から同じ値を解決する。
 - 既存のクラウドアーキテクチャ正本を更新する場合は、その絶対パスと現在の成果物の版。
+- 日本語Markdown正本の保存先。新規は既存の書き込み可能な絶対directory、更新は既存Markdownの絶対path。
 
 入力成果物は同等内容でよく、生成方法や固有の内部形式を要求しない。ただし状態、根拠、版またはハッシュ、入力IDを失った転記は入力として完成扱いしない。
 
@@ -54,9 +46,9 @@ PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FIL
 
 適用条件: 要求の基準資料、論理設計、利用・負荷、品質、制約資料が入力にある。
 
-必須行動: 各入力へ`SRC-` ID、種類（機械キー: `kind`）、絶対パスまたは再現可能な所在情報、版またはハッシュ、観測時点を付ける。解決済み設定は`runtime_config`として登録し、`provider_resolution`の`source_artifact_id`からそのSRC IDへ結ぶ。`provider_resolution.resolved_config`は同じSRCの所在、`config_fingerprint`は同じSRCの版またはハッシュと完全一致させる。プロバイダー採用制約も同じSRC IDを根拠に持つ。要求、品質、利用・負荷の各設計根拠へ`DRV-` IDを付け、上流ID、状態、内容（`statement`）、設計への影響（`impact`）を保存する。制約へ`CON-` IDを付け、事実、合意済み決定、仮説を保つ。共有用語がある場合は入力を`terminology`として登録し、定義を再記述せず、構成判断から一つのMarkdown用語正本の版・所在と日本語の推奨用語名を`terminology`で参照する。用語や用語正本のIDを利用者へ要求しない。
+必須行動: 各入力へ`SRC-` ID、種類（機械キー: `kind`）、絶対パスまたは再現可能な所在情報、版またはハッシュ、観測時点を付ける。選択元の永続設定は`runtime_config`として登録し、`provider_resolution`の`source_artifact_id`からそのSRC IDへ結ぶ。`provider_resolution.config_locator`は同じSRCの所在、`config_fingerprint`は同じSRCの版またはハッシュと完全一致させる。プロバイダー採用制約も同じSRC IDを根拠に持つ。要求、品質、利用・負荷の各設計根拠へ`DRV-` IDを付け、上流ID、状態、内容（`statement`）、設計への影響（`impact`）を保存する。制約へ`CON-` IDを付け、事実、合意済み決定、仮説を保つ。共有用語がある場合は入力を`terminology`として登録し、定義を再記述せず、構成判断から一つのMarkdown用語正本の版・所在と日本語の推奨用語名を`terminology`で参照する。用語や用語正本のIDを利用者へ要求しない。
 
-成功判定: 後続の選定理由から上流成果物、版またはハッシュ、REQ/QR/WL ID、根拠状態に加え、プロバイダー値、解決済み設定パス/ハッシュ、元設定パスへ戻れる。
+成功判定: 後続の選定理由から上流成果物、版またはハッシュ、REQ/QR/WL ID、根拠状態に加え、プロバイダー値、永続設定locator/ハッシュへ戻れる。
 
 失敗時: プロバイダー未指定・不正値を候補先頭や人気プロバイダーへ倒さない。要求や品質閾値を都合よく変更せず、不足・矛盾を未決の問いまたは停止理由として返す。論理データモデルをクラウド製品向けに作り直さない。
 
@@ -126,7 +118,13 @@ PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FIL
 
 失敗時: テストデータ、文書レビュー、プロバイダー仕様の読取りを実負荷試験・障害試験・災害復旧訓練の成功へ変えない。未検証は計画済みとし、引き渡しへ残す。
 
-### 8. 正本を検査して保存する
+### 8. 質問一覧と対話終了を明示確認する
+
+依頼と参照資料から決まらない事項は、同じ担当が理由付きの推奨を添えて一問ずつ確認する。個別回答だけで対話を完了しない。全問を聞いた後、`open`、`resolved`、`withdrawn`に分けた質問一覧、解決内容、撤回理由、影響先を利用者へ提示し、一覧全体と対話終了の明示確認を得る。回答を受理した問いだけを`resolved`、利用者が理由付きで取り下げた問いだけを`withdrawn`、未回答または未合意を`open`とし、解決を撤回へ読み替えない。
+
+JSONの各`open_questions`要素は従来の項目に`state`、`resolution`、`reason`を加える。`resolved`だけが非空の`resolution`を持ち、`open`と`withdrawn`の`resolution`は`null`である。`question_review`へ全質問ID、確認者、確認内容、`dialogue_complete: true`を記録する。全IDの一致と明示確認が無ければ次の保存工程へ進まない。
+
+### 9. 正本を検査して保存する
 
 [クラウドアーキテクチャ契約](references/architecture-contract.md)のスキーマと不変条件を読み、正本をJSONで作る。配布パッケージ内の`scripts/architecture.py`を絶対パスで解決し、次を順番に実行する。
 
@@ -134,15 +132,29 @@ PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FIL
 2. 初回保存は`python3 <architecture.pyの絶対path> write --repo <対象repositoryの絶対path> --slug <slug> --file <候補正本の絶対path>`
 3. 更新保存は2へ`--expected-version <現在version>`を加える。
 
-最後の設定利用後は、成功、停止、失敗のいずれでも`python3 "${PLUGIN_ROOT}/scripts/run-config.py" cleanup --config "$CFG_FILE"`を実行する。他実行の設定ディレクトリや元設定ファイルを削除しない。
-
 成功判定: stdoutが返す絶対パスに正本があり、同じスクリプトの`check`が成功し、stderrが空である。
 
 失敗時: 検証器の理由を変更せず返す。検査を通すためにプロバイダーを仮選定せず、設計根拠状態、トレードオフ、障害経路、図要素を捏造しない。
 
+### 10. 日本語Markdown正本を直接保存する
+
+開始時に`document_destination`を確認する。新規作成は既存の書き込み可能な絶対directoryを`output_directory`で、更新は既存Markdownの絶対pathを`update_target`で受け取り、必ずどちらか一方だけとする。未指定、相対path、両方指定では、保存先を補完せず一問で確認して停止する。
+
+JSON正本の保存後、同じ担当がそのJSONと根拠資料を読み、日本語Markdown正本を直接作る。別playbook、別agent、意味を決めるrendererへ委譲しない。Markdownには成果物IDと版、JSON正本の絶対path、provider設定根拠、DRV/CON/ADR/検証ID、代替案、採否理由、障害・縮退経路、編集可能なMermaid図、未決、`handoff`を含める。JSON状態が`ready_for_implementation_handoff`なら`status: ready`、`saved_with_open_questions`なら`status: unresolved`とし、後者は`handoff.ready: false`を明記する。新規名は`cloud-architecture.md`、更新は`update_target`そのものとする。保存後に全文を読み戻してJSONのID、状態、根拠、ADR、図、未決、handoffが欠落・昇格していないことを確認する。欠落時は`failed`として部分保存pathと理由を報告し、完成文書pathへ昇格させない。
+
+### 11. 所有するプロバイダー設定を後片付けする
+
+`provider_configuration_ownership`が`generated_by_this_skill`である場合だけ、最後の設定利用後に`transient_provider_configuration_path`をYAMLが接続する専用adapterへ渡す。adapterはpackage既存cleanup runtimeへ委譲し、成功時に`provider_cleanup_status: completed`を返す。`provider_configuration_ownership`が`external_input`の場合、adapterはcleanup runtimeを呼ばず、`provider_cleanup_status: preserved_external_input`を返す。これ以外のownershipは削除を試みず失敗する。
+
+入力の`request.provider_resolution`から受け取った非所有設定、選択元の永続設定、他実行の設定directory、JSON/Markdown正本は削除しない。YAMLのconditional needは、所有時だけ`transient_provider_configuration_path`をcleanup工程へ要求する。
+
+このskillが設定を生成した後に停止または失敗した場合は、未実行の認知・保存工程へ進まず、この工程だけを実行してから失敗を報告する。所有を証明できない、またはcleanupが失敗した場合は削除済みとせず、設定path、ownership、cleanup失敗理由を未解決のまま返す。
+
 ## 出力
 
-対象リポジトリの`system-design/architectures/<slug>.architecture.json`に、一つのクラウドアーキテクチャ正本を保存する。正本には解決プロバイダーと設定根拠、クラウド・サービス選定、代替案比較、ADR、編集可能なインフラ構成図、要求トレーサビリティ、障害・縮退経路、検証計画を含める。
+対象リポジトリの`system-design/architectures/<slug>.architecture.json`に、スキーマ2のクラウドアーキテクチャ正本を保存する。正本には解決プロバイダーと設定根拠、クラウド・サービス選定、代替案比較、ADR、編集可能なインフラ構成図、要求トレーサビリティ、障害・縮退経路、検証計画を含める。旧スキーマ正本は参照資産として変更せず保持できるが、現行入力または更新対象として受理しない。
+
+公開結果は`status`、全状態を含む`questions`、状態別の`open_questions`、`resolved_questions`、`withdrawn_questions`、`question_review`、`handoff`、`architecture_artifact_path`、`architecture_document_path`、`provider_configuration_ownership`、`provider_cleanup_status`を返す。JSON正本だけ、Markdown正本だけ、または必要なcleanupが失敗した状態を完了としない。
 
 報告には正本の絶対パス、成果物の状態と版、配置方式、採用済み・未決の機能領域、採用・棄却代替案、採用済み・提案中のADR、未決の問い、検証状態、実行した検証、未検証範囲を含める。
 
@@ -160,7 +172,7 @@ PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FIL
 
 - システム境界、確認済み要求、測定可能な品質要求、利用・負荷モデルのいずれかがなく、選定結果が変わる。
 - 実行時設定の`cloud.provider`が未指定、または`aws`/`gcp`以外である。
-- 解決プロバイダー、解決済み設定パス/ハッシュ、元設定パスを入力根拠へ追跡できない。
+- 解決プロバイダー、永続設定locator/ハッシュを入力根拠へ追跡できない。
 - 上流成果物の版またはハッシュまたは状態が食い違い、同じ対象か確認できない。
 - プロバイダー/配置方式の未決を未決として切り離せず、選択肢の母集団が定まらない。
 - 採用済み機能領域を要求、品質、利用・負荷、制約へ追跡できない。
@@ -172,7 +184,7 @@ PROVIDER=$(yq -er '.cloud.provider | select(. == "aws" or . == "gcp")' "$CFG_FIL
 
 ## 完了条件
 
-- 一つの正本が保存され、状態が`ready_for_implementation_handoff`または`saved_with_open_questions`である。
+- 機械可読JSON正本と日本語Markdown正本が両方保存され、読戻しで意味が一致し、状態が`ready_for_implementation_handoff`または`saved_with_open_questions`である。
 - 解決プロバイダーが`aws`または`gcp`で、`provider_resolution`、`runtime_config`入力、プロバイダー制約、採用選定へ追跡できる。
 - 12機能領域が採用済み、未決、非該当のいずれかで評価され、採用済みは要求・品質・負荷・制約・代替案・ADR・検証へ追跡できる。
 - 配置方式とプロバイダー範囲が単一クラウド、マルチクラウド、ハイブリッド、オンプレミス、クラウド未決の境界規則に従う。

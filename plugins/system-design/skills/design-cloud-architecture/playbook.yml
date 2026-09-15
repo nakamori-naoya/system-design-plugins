@@ -1,0 +1,58 @@
+version: 2
+name: design-cloud-architecture
+description: クラウドアーキテクチャとMarkdown正本を同じagentが宣言順に作る。
+inputs: [request, requirements_baseline, logical_design, workload_model, quality_requirements, organizational_constraints, document_destination]
+instructions:
+  execution:
+    directive: 同じagentがstepsを上から順に実行する。provider設定は外部供給なら非所有として保持し、生成した場合だけ一時設定をcleanupする。生成後に失敗または停止した場合もcleanup-provider-configurationだけを実行してから報告し、失敗工程を成功扱いしない
+requires: []
+steps:
+  - id: resolve-provider-configuration
+    script: scripts/prepare-provider-configuration.sh
+    purpose: "公開request objectを検査し、完全なprovider_resolutionはexternal_inputとして変更せず返し、無い場合だけtarget_repositoryを既存runtimeへ渡して生成し、正規化した設定値・ownership・所有時だけ存在する一時設定pathを返す"
+    needs: [request]
+    provides: [resolved_provider_configuration, provider_configuration_ownership, transient_provider_configuration_path]
+  - id: fix-upstream-evidence
+    agent_work: invoking_agent
+    purpose: "上流基準資料と設計根拠を固定する"
+    needs: [resolved_provider_configuration]
+  - id: decide-deployment-boundary
+    agent_work: invoking_agent
+    purpose: "配置方式の境界を判定する"
+  - id: compare-alternatives
+    agent_work: invoking_agent
+    purpose: "機能領域ごとに代替案を比較する"
+  - id: record-adrs
+    agent_work: invoking_agent
+    purpose: "採用判断をADRへ固定する"
+  - id: design-failure-paths
+    agent_work: invoking_agent
+    purpose: "障害・縮退経路を設計する"
+  - id: draw-editable-infrastructure
+    agent_work: invoking_agent
+    purpose: "編集可能なインフラ構成図を作る"
+  - id: close-trace-and-verification
+    agent_work: invoking_agent
+    purpose: "要求トレーサビリティと検証計画を閉じる"
+  - id: confirm-question-inventory
+    agent_work: invoking_agent
+    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    provides: [question_review]
+  - id: validate-and-save-canonical
+    agent_work: invoking_agent
+    purpose: "正本を検査して保存する"
+    needs: [resolved_provider_configuration, question_review]
+    provides: [architecture_artifact_path]
+  - id: save-markdown-canonical
+    agent_work: invoking_agent
+    purpose: "日本語Markdown正本を直接保存する"
+    needs: [architecture_artifact_path]
+    provides: [architecture_document_path]
+  - id: cleanup-provider-configuration
+    script: scripts/cleanup-provider-configuration.sh
+    purpose: "ownershipを分岐条件にし、generated_by_this_skillでは所有する一時設定だけを既存runtimeでcleanupし、external_inputではcleanup runtimeを呼ばずpreserved_external_inputを返す"
+    needs: [provider_configuration_ownership]
+    conditional_needs:
+      - when: provider_configuration_ownership == generated_by_this_skill
+        needs: [transient_provider_configuration_path]
+    provides: [provider_cleanup_status]

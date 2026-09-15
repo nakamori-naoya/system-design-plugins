@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -34,8 +36,56 @@ class ArchitectureContractTest(unittest.TestCase):
             check=False,
         )
 
+    def prepare_provider(
+        self, request: dict, package_root: Path = PACKAGE_ROOT
+    ) -> subprocess.CompletedProcess[str]:
+        entry = (
+            package_root
+            / "skills/design-cloud-architecture/scripts/prepare-provider-configuration.sh"
+        )
+        return subprocess.run(
+            [
+                "bash",
+                str(entry),
+                "--request-json",
+                json.dumps(request, ensure_ascii=False),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def cleanup_provider(
+        self,
+        ownership: str,
+        transient_path: Path | None = None,
+        package_root: Path = PACKAGE_ROOT,
+    ) -> subprocess.CompletedProcess[str]:
+        entry = (
+            package_root
+            / "skills/design-cloud-architecture/scripts/cleanup-provider-configuration.sh"
+        )
+        arguments = ["bash", str(entry), ownership]
+        if transient_path is not None:
+            arguments.append(str(transient_path))
+        return subprocess.run(
+            arguments,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
     def load(self, name: str) -> dict:
-        return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        if value.get("schema_version") == 2:
+            for item in value["open_questions"]:
+                item.update(state="open", resolution=None, reason="未決として一覧確認した")
+            value["question_review"] = {
+                "question_ids": [item["id"] for item in value["open_questions"]],
+                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
+                "dialogue_complete": True,
+            }
+        return value
 
     def write(self, path: Path, value: dict) -> None:
         path.write_text(
@@ -51,18 +101,25 @@ class ArchitectureContractTest(unittest.TestCase):
         return self.call(SCRIPT, "check", "--file", path.resolve())
 
     def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        path = (FIXTURES / "success.json").resolve()
-        result = self.call(SCRIPT, "check", "--file", path)
+        result = self.check_temporary(self.load("success.json"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
-        self.assertEqual(result.stdout.strip(), str(path))
 
-    def test_schema_one_remains_accepted_during_migration(self) -> None:
+    def test_withdrawn_question_does_not_block_ready_but_requires_final_confirmation(self) -> None:
+        artifact = self.load("success.json")
+        artifact["open_questions"] = [{"id": "OQ-ARCH-999", "question": "撤回済み", "owner": "利用者", "affected_refs": ["SEL-001"], "blocks": ["implementation_handoff"], "state": "withdrawn", "resolution": None, "reason": "対象外と合意"}]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-999"]
+        self.assertEqual(self.check_temporary(artifact).returncode, 0)
+        artifact["question_review"]["question_ids"] = []
+        self.assertEqual(self.check_temporary(artifact).returncode, 2)
+
+    def test_schema_one_is_rejected_without_migration_path(self) -> None:
         artifact = self.load("success.json")
         artifact["schema_version"] = 1
         del artifact["terminology"]
         result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("schema_versionは2", result.stderr)
 
     def test_success_contains_required_design_products(self) -> None:
         artifact = self.load("success.json")
@@ -78,7 +135,7 @@ class ArchitectureContractTest(unittest.TestCase):
         self.assertTrue(artifact["failure_scenarios"])
         self.assertTrue(artifact["verification_plan"])
 
-    def test_runtime_config_resolves_explicit_aws_and_cleans_up(self) -> None:
+    def test_generated_provider_configuration_is_owned_and_cleaned(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             copied_package = base / "system-design"
@@ -88,44 +145,231 @@ class ArchitectureContractTest(unittest.TestCase):
             settings.mkdir(parents=True)
             config = settings / "system-design.config.yml"
             shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            prepared = subprocess.run(
-                ["bash", str(copied_package / "scripts/prepare.sh"), str(repo.resolve())],
-                text=True,
-                capture_output=True,
-                check=False,
+            prepared = self.prepare_provider(
+                {"target_repository": str(repo.resolve())}, copied_package
             )
             self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            resolved = Path(prepared.stdout.strip())
-            self.assertTrue(resolved.is_absolute())
-            inspected = subprocess.run(
-                ["yq", "-o=json", "-I=0", ".", str(resolved)],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(inspected.returncode, 0, inspected.stderr)
-            value = json.loads(inspected.stdout)
-            self.assertEqual(value["cloud"]["provider"], "aws")
-            self.assertEqual(value["resolution"]["config_source"], "project")
+            result = json.loads(prepared.stdout)
             self.assertEqual(
-                value["resolution"]["selected_config"],
+                result["provider_configuration_ownership"],
+                "generated_by_this_skill",
+            )
+            resolved = Path(result["transient_provider_configuration_path"])
+            self.assertTrue(resolved.is_absolute())
+            resolution = result["resolved_provider_configuration"]
+            self.assertEqual(resolution["provider"], "aws")
+            self.assertEqual(
+                resolution["config_locator"],
                 str(config.resolve()),
             )
-            self.assertRegex(value["resolution"]["config_fingerprint"], r"^sha256:[0-9a-f]{64}$")
-            cleaned = subprocess.run(
-                [
-                    "python3",
-                    str(copied_package / "scripts/run-config.py"),
-                    "cleanup",
-                    "--config",
-                    str(resolved),
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
+            self.assertRegex(
+                resolution["config_fingerprint"], r"^sha256:[0-9a-f]{64}$"
+            )
+            cleaned = self.cleanup_provider(
+                result["provider_configuration_ownership"], resolved, copied_package
+            )
+            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
+            self.assertEqual(
+                json.loads(cleaned.stdout)["provider_cleanup_status"], "completed"
+            )
+            self.assertFalse(resolved.parent.exists())
+            self.assertTrue(config.is_file())
+
+            artifact = self.load("success.json")
+            source_id = artifact["provider_resolution"]["source_artifact_id"]
+            source = next(item for item in artifact["input_artifacts"] if item["id"] == source_id)
+            source["locator"] = str(config.resolve())
+            source["version_or_hash"] = resolution["config_fingerprint"]
+            artifact["provider_resolution"]["config_locator"] = str(config.resolve())
+            artifact["provider_resolution"]["config_fingerprint"] = resolution["config_fingerprint"]
+            checked = self.check_temporary(artifact)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_external_provider_configuration_is_preserved_without_runtime_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / "external-provider.yml"
+            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
+            fingerprint = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
+            supplied = {
+                "provider": "aws",
+                "config_locator": str(config.resolve()),
+                "config_fingerprint": fingerprint,
+            }
+            prepared = self.prepare_provider(
+                {
+                    "provider_resolution": supplied,
+                    "target_repository": "/unused/because/external-input-wins",
+                }
+            )
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            result = json.loads(prepared.stdout)
+            self.assertEqual(result["resolved_provider_configuration"], supplied)
+            self.assertEqual(result["provider_configuration_ownership"], "external_input")
+            self.assertIsNone(result["transient_provider_configuration_path"])
+
+            cleaned = self.cleanup_provider(result["provider_configuration_ownership"])
+            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
+            self.assertEqual(
+                json.loads(cleaned.stdout)["provider_cleanup_status"],
+                "preserved_external_input",
+            )
+            self.assertTrue(config.is_file())
+
+    def test_external_provider_must_match_the_selected_config_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / "external-provider.yml"
+            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
+            fingerprint = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
+            prepared = self.prepare_provider(
+                {
+                    "provider_resolution": {
+                        "provider": "gcp",
+                        "config_locator": str(config.resolve()),
+                        "config_fingerprint": fingerprint,
+                    }
+                }
+            )
+            self.assertEqual(prepared.returncode, 2)
+            self.assertEqual(prepared.stdout, "")
+            self.assertIn("cloud.providerと一致しない", prepared.stderr)
+            self.assertTrue(config.is_file())
+
+    def test_generated_configuration_is_cleaned_after_downstream_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary) / "repository"
+            settings = repo / ".harness-plugins"
+            settings.mkdir(parents=True)
+            config = settings / "system-design.config.yml"
+            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
+            prepared = self.prepare_provider({"target_repository": str(repo.resolve())})
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            result = json.loads(prepared.stdout)
+            resolved = Path(result["transient_provider_configuration_path"])
+
+            # 後続工程が失敗した状態を模し、認知工程を進めずcleanupだけを呼ぶ。
+            cleaned = self.cleanup_provider(
+                result["provider_configuration_ownership"], resolved
             )
             self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
             self.assertFalse(resolved.parent.exists())
+            self.assertTrue(config.is_file())
+
+    def test_cleanup_failure_is_reported_without_claiming_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary) / "repository"
+            settings = repo / ".harness-plugins"
+            settings.mkdir(parents=True)
+            shutil.copy2(
+                CONFIG_FIXTURES / "aws.config.yml",
+                settings / "system-design.config.yml",
+            )
+            prepared = self.prepare_provider({"target_repository": str(repo.resolve())})
+            self.assertEqual(prepared.returncode, 0, prepared.stderr)
+            result = json.loads(prepared.stdout)
+            resolved = Path(result["transient_provider_configuration_path"])
+            unexpected = resolved.parent / "unexpected.txt"
+            unexpected.write_text("do not delete unknown run files", encoding="utf-8")
+
+            failed = self.cleanup_provider(
+                result["provider_configuration_ownership"], resolved
+            )
+            self.assertEqual(failed.returncode, 2)
+            self.assertEqual(failed.stdout, "")
+            self.assertIn("cleanupに失敗", failed.stderr)
+            self.assertTrue(resolved.parent.is_dir())
+
+            unexpected.unlink()
+            recovered = self.cleanup_provider(
+                result["provider_configuration_ownership"], resolved
+            )
+            self.assertEqual(recovered.returncode, 0, recovered.stderr)
+            self.assertFalse(resolved.parent.exists())
+
+    def test_prepare_validation_failure_keeps_failure_after_successful_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            copied_package = base / "system-design"
+            shutil.copytree(PACKAGE_ROOT, copied_package)
+            repo = base / "repository"
+            repo.mkdir()
+            run_directory = base / "generated-run"
+            run_directory.mkdir()
+            resolved = run_directory / "resolved.yml"
+            resolved.write_text(
+                "cloud:\n  provider: aws\nresolution: {}\n", encoding="utf-8"
+            )
+            (run_directory / "run.json").write_text(
+                json.dumps(
+                    {"schema": 1, "config": str(resolved), "uid": os.getuid()}
+                ),
+                encoding="utf-8",
+            )
+            runtime = copied_package / "scripts/prepare.sh"
+            runtime.write_text(
+                "#!/usr/bin/env bash\nprintf '%s\\n' "
+                + repr(str(resolved))
+                + "\n",
+                encoding="utf-8",
+            )
+            runtime.chmod(0o755)
+
+            prepared = self.prepare_provider(
+                {"target_repository": str(repo.resolve())}, copied_package
+            )
+            self.assertEqual(prepared.returncode, 2)
+            self.assertEqual(prepared.stdout, "")
+            self.assertIn("来歴が不完全", prepared.stderr)
+            self.assertNotIn("provider設定cleanupに失敗", prepared.stderr)
+            self.assertFalse(run_directory.exists())
+
+    def test_prepare_reports_owned_path_when_validation_and_cleanup_both_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            copied_package = base / "system-design"
+            shutil.copytree(PACKAGE_ROOT, copied_package)
+            repo = base / "repository"
+            repo.mkdir()
+            run_directory = base / "generated-run"
+            run_directory.mkdir()
+            resolved = run_directory / "resolved.yml"
+            resolved.write_text(
+                "cloud:\n  provider: aws\nresolution: {}\n", encoding="utf-8"
+            )
+            (run_directory / "run.json").write_text(
+                json.dumps(
+                    {"schema": 1, "config": str(resolved), "uid": os.getuid()}
+                ),
+                encoding="utf-8",
+            )
+            (run_directory / "unexpected.txt").write_text(
+                "preserve unknown run content", encoding="utf-8"
+            )
+            runtime = copied_package / "scripts/prepare.sh"
+            runtime.write_text(
+                "#!/usr/bin/env bash\nprintf '%s\\n' "
+                + repr(str(resolved))
+                + "\n",
+                encoding="utf-8",
+            )
+            runtime.chmod(0o755)
+
+            prepared = self.prepare_provider(
+                {"target_repository": str(repo.resolve())}, copied_package
+            )
+            self.assertEqual(prepared.returncode, 2)
+            self.assertEqual(prepared.stdout, "")
+            self.assertIn("来歴が不完全", prepared.stderr)
+            self.assertIn("provider設定cleanupに失敗", prepared.stderr)
+            self.assertIn(
+                "provider_configuration_ownership=generated_by_this_skill",
+                prepared.stderr,
+            )
+            self.assertIn(
+                "transient_provider_configuration_path=" + str(resolved),
+                prepared.stderr,
+            )
+            self.assertIn("unexpected run files; refusing cleanup", prepared.stderr)
+            self.assertTrue(run_directory.is_dir())
 
     def test_runtime_config_rejects_missing_and_invalid_provider(self) -> None:
         cases = (
@@ -165,7 +409,7 @@ class ArchitectureContractTest(unittest.TestCase):
         }
         self.assertEqual(source["kind"], "runtime_config")
         self.assertEqual(artifact["provider_resolution"]["provider"], "aws")
-        self.assertEqual(artifact["provider_resolution"]["resolved_config"], source["locator"])
+        self.assertEqual(artifact["provider_resolution"]["config_locator"], source["locator"])
         self.assertEqual(artifact["provider_resolution"]["config_fingerprint"], source["version_or_hash"])
         self.assertEqual(provider_selection["provider"], "aws")
         self.assertTrue(config_constraints & set(provider_selection["constraint_ids"]))
@@ -183,10 +427,10 @@ class ArchitectureContractTest(unittest.TestCase):
         self.assertIn("runtime_config", result.stderr)
 
         wrong_path = self.load("success.json")
-        wrong_path["provider_resolution"]["resolved_config"] = "/evidence/another-run.resolved.yml"
+        wrong_path["provider_resolution"]["config_locator"] = "/evidence/another-run.resolved.yml"
         result = self.check_temporary(wrong_path)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("path", result.stderr)
+        self.assertIn("locator", result.stderr)
 
         wrong_fingerprint = self.load("success.json")
         wrong_fingerprint["provider_resolution"]["config_fingerprint"] = "sha256:another-run"
@@ -392,8 +636,12 @@ class ArchitectureContractTest(unittest.TestCase):
                 "owner": "architecture sponsor",
                 "affected_refs": ["SEL-001", "ALT-001"],
                 "blocks": ["implementation_handoff"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
         artifact["artifact"]["state"] = "saved_with_open_questions"
         result = self.check_temporary(artifact)
         self.assertEqual(result.returncode, 2)
@@ -433,8 +681,12 @@ class ArchitectureContractTest(unittest.TestCase):
                 "owner": "architecture sponsor",
                 "affected_refs": ["SEL-001", "ALT-001"],
                 "blocks": ["implementation_handoff"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
         result = self.check_temporary(artifact)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -463,7 +715,8 @@ class ArchitectureContractTest(unittest.TestCase):
             base = Path(temporary)
             repo = base / "repository"
             repo.mkdir()
-            source = (FIXTURES / "success.json").resolve()
+            source = base / "source.json"
+            self.write(source, self.load("success.json"))
             first = self.call(
                 SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
             )
@@ -502,7 +755,7 @@ class ArchitectureContractTest(unittest.TestCase):
             copied = base / "system-design"
             shutil.copytree(ROOT / "plugins/system-design", copied)
             artifact = base / "architecture.json"
-            shutil.copy2(FIXTURES / "success.json", artifact)
+            self.write(artifact, self.load("success.json"))
             copied_script = copied / "skills/design-cloud-architecture/scripts/architecture.py"
             result = self.call(copied_script, "check", "--file", artifact.resolve())
             self.assertEqual(result.returncode, 0, result.stderr)
