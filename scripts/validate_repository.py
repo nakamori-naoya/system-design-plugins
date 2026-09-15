@@ -69,7 +69,7 @@ EXPECTED_ARTIFACT_VALUES = {
     "discover-quality-requirements": "quality_artifact",
     "design-cloud-architecture": "architecture_artifact",
 }
-PLAYBOOK_PUBLIC_INPUTS = {"request", "referenced_artifacts", "run_root", "target_repository"}
+PLAYBOOK_PUBLIC_INPUTS = {"request", "referenced_artifacts", "run_root", "target_repository", "document_destination"}
 
 
 class ValidationError(ValueError):
@@ -253,7 +253,7 @@ def validate_playbooks(package: Path) -> None:
                 "一度ずつ明示しなければなりません"
             )
         expected_name = EXPECTED_DOCUMENT_NAMES[name]
-        if text.count(f"name: {expected_name}") != 1:
+        if text.count(f"new_name: {expected_name}") != 1:
             fail(f"{name} playbookのwrite-doc用ASCII nameが不正です")
         if re.search(r"id:\s*document[^\n]*when:", text):
             fail(f"{name} playbookはunresolved時にdocumentをskipできません")
@@ -896,8 +896,8 @@ def self_test(root: Path) -> None:
             path = candidate / "plugins/system-design/playbooks/system-design/discover-requirements/playbook.yml"
             path.write_text(
                 path.read_text(encoding="utf-8").replace(
-                    "provides: [requirements_document_path, write_doc_config]}",
-                    "provides: [requirements_document_path, write_doc_config], when: verification_report.status == ready}",
+                    "provides: [requirements_document_path]}",
+                    "provides: [requirements_document_path], when: verification_report.status == ready}",
                 ), encoding="utf-8"
             )
 
@@ -934,8 +934,8 @@ def self_test(root: Path) -> None:
         def forward_cycle(candidate: Path) -> None:
             path = candidate / "plugins/system-design/playbooks/system-design/discover-requirements/playbook.yml"
             path.write_text(path.read_text(encoding="utf-8").replace(
-                "needs: [request, referenced_artifacts]",
-                "needs: [request, referenced_artifacts, material]", 1
+                "needs: [run_root, request, referenced_artifacts]",
+                "needs: [run_root, request, referenced_artifacts, material]", 1
             ), encoding="utf-8")
 
         def missing_required_cli_need(candidate: Path) -> None:

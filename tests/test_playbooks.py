@@ -83,6 +83,28 @@ def grounded_input(identifier: str, fixture_name: str, artifact: dict) -> dict:
     return incoming
 
 
+def grill_yaml_roundtrip(temporary: Path, prefix: str, result: dict) -> dict:
+    """公開YAMLの受渡しをfixtureで再現する。grillの実モデルは呼ばない。"""
+    output = temporary / f"{prefix}-grill-output.yml"
+    incoming = temporary / f"{prefix}-grill-input.yml"
+    request = {
+        "contract": "grill/grill", "version": 1, "topic": "予約サービスの対象範囲",
+        "context": {"purpose": "次の設計へ渡す境界を確かめる", "audience": "サービス責任者", "boundary": "実装は変更しない"},
+        "questions": [{"id": "q1", "question": "対象をどこまで含めるか", "recommendation": "目的を観測できるため利用者経路まで含める"}],
+        "output_to": str(output),
+    }
+    def save_yaml(path, value):
+        converted = subprocess.run(["yq", "-P", ".", "-"], input=json.dumps(value), text=True, capture_output=True, check=True)
+        path.write_text(converted.stdout, encoding="utf-8")
+    save_yaml(incoming, request)
+    decoded = json.loads(run("yq", "-o=json", ".", str(incoming)).stdout)
+    assert decoded == request
+    save_yaml(output, dict(result, contract="grill/grill", version=1))
+    received = json.loads(run("yq", "-o=json", ".", decoded["output_to"]).stdout)
+    assert received == dict(result, contract="grill/grill", version=1)
+    return received
+
+
 def exercise_steps(playbook: Path, temporary: Path, fixture_name: str, artifact_mode: str = "ready") -> tuple[str, Path]:
     identifier = playbook.name
     incoming = temporary / f"{identifier}-{fixture_name}-{artifact_mode}-input.json"
@@ -91,7 +113,9 @@ def exercise_steps(playbook: Path, temporary: Path, fixture_name: str, artifact_
     material = temporary / f"{identifier}-{fixture_name}-{artifact_mode}-material.md"
     report = temporary / f"{identifier}-{fixture_name}-{artifact_mode}-verify.json"
     artifact = unresolved_artifact(identifier) if artifact_mode == "unresolved" else valid_artifact(identifier)
-    write(incoming, grounded_input(identifier, fixture_name, artifact))
+    source = grounded_input(identifier, fixture_name, artifact)
+    source["grill"] = grill_yaml_roundtrip(temporary, f"{identifier}-{fixture_name}-{artifact_mode}", source["grill"])
+    write(incoming, source)
     write(artifact_path, artifact)
     check_artifact(identifier, artifact_path)
     scripts = playbook / "scripts"
