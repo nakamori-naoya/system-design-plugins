@@ -7,6 +7,12 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/system-design-validation.XXXXXX") || exit 
 trap 'rm -rf "$TMP_ROOT"' EXIT
 status=0
 
+# root契約（配置・manifest・隣接playbook.yml・禁止参照形）の正本は兄弟checkout harness-tools だけ。無ければ止まる（fixtureで代用しない）。
+TOOLS="$ROOT/../harness-tools/tools"
+[ -d "$TOOLS" ] || { echo "[error] 兄弟 checkout harness-tools が無い: $TOOLS" >&2; exit 2; }
+python3 "$TOOLS/validate-plugin-repository.py" "$ROOT" || status=1
+
+# repository固有のvalidator（root契約を置き換えない）
 python3 "$ROOT/scripts/validate_repository.py" "$ROOT" || status=1
 python3 "$ROOT/scripts/validate_repository.py" --self-test "$ROOT" || status=1
 PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/validate_skill_playbooks.py" "$ROOT/plugins/system-design" --self-test || status=1
