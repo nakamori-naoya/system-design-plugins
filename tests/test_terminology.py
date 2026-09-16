@@ -25,7 +25,7 @@ class TerminologyContractTest(unittest.TestCase):
         return subprocess.run(arguments, text=True, capture_output=True, check=False)
 
     def artifact_with(self, root: Path, glossary: Path, *, replace: tuple[str, str] | None = None) -> Path:
-        text = REQUIREMENTS.read_text(encoding="utf-8").replace(str(TERMINOLOGY), str(glossary))
+        text = REQUIREMENTS.read_text(encoding="utf-8").replace("<FIXTURES>/terminology/success.md", str(glossary))
         if replace is not None:
             self.assertIn(replace[0], text)
             text = text.replace(*replace)
@@ -34,9 +34,11 @@ class TerminologyContractTest(unittest.TestCase):
         return path
 
     def test_fixture_artifact_references_fixture_terminology(self) -> None:
-        result = self.call(TERMINOLOGY, REQUIREMENTS)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), str(TERMINOLOGY.resolve()))
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = self.artifact_with(Path(directory), TERMINOLOGY)
+            result = self.call(TERMINOLOGY, artifact)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(TERMINOLOGY.resolve()))
 
     def test_heading_based_glossary_has_all_concept_categories(self) -> None:
         text = TERMINOLOGY.read_text(encoding="utf-8")

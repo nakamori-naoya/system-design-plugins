@@ -37,7 +37,7 @@ class CanonCase(unittest.TestCase):
         )
 
     def body(self) -> str:
-        return self.fixture.read_text(encoding="utf-8")
+        return self.fixture.read_text(encoding="utf-8").replace("<FIXTURES>", str(FIXTURES))
 
     def mutate(self, old: str, new: str, *, count: int = 1) -> str:
         text = self.body()
