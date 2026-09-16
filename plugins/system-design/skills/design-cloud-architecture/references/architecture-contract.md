@@ -1,26 +1,26 @@
 # クラウドアーキテクチャ契約
 
-この参照資料は配置方式、選定と比較、ADR、構成図、追跡可能性、障害、検証、保存スキーマを定める。上流要求や論理データモデル、アプリケーション内部、IaCは定めない。
+この参照資料は配置方式、選定と比較、ADR、構成図、追跡可能性、障害の判断境界と、正本（cloud-architecture型のMarkdown）に対する機械検査の宣言を定める。上流要求や論理データモデル、アプリケーション内部、IaCは定めない。正本の記法（見出し・表の列・ID）はwrite-docの`cloud-architecture`型のtemplateが定める。
 
-正本は`schema_version=2`だけを受理する。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、構成判断から日本語の推奨用語名への参照だけを持つ。用語や用語正本のIDを要求せず、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本では表ではなく概念種別見出しによって、各用語がアクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念のどれかを明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を混同しない。用語正本の版が変わった場合は、参照項目を`change_log.invalidated_refs`へ記録して再評価する。旧版を現行正本として読取り、更新、変換する経路は持たない。
+用語正本があるときは、本文の語を用語正本の推奨用語名で書き、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本の版が変わった場合は、参照項目を「仮説と未決」へ記録して再評価する。
 
 ## 入力プロバイダーの根拠
 
 `provider`は公開入力であり、許可値は`aws`と`gcp`だけである。未指定、空、その他の値は停止する。既定値は無い。
 
-利用者がプロバイダーを指定した依頼または決定記録を`input_artifacts`（`kind`は`decision_record`、`organization`、`contract`など実際の出所）として登録し、その制約を`constraints`へ`classification=agreed_decision`で記録する。`provider_decision.constraint_id`はその制約を指し、`provider`機能領域の選定はその制約IDを`constraint_ids`に含める。正常例は`provider: aws`とそれを裏付ける合意済み制約、反例は`provider: azure`、仮説の制約を根拠にした指定、または制約を引用しない`provider`選定である。境界例は制約が存在するのに`provider`選定が引用しない場合で、これは追跡不能として停止する。
+利用者がプロバイダーを指定した依頼または決定記録を「設計入力と制約」の表に`CON-`（`agreed_decision`）として載せ、「代替案比較」のプロバイダー行の採用候補を`AWS`または`GCP`にして根拠IDにその`CON-`を含める。正常例は`provider: aws`とそれを裏付ける合意済み制約、反例は`provider: azure`、仮説の制約を根拠にした指定、または制約を引用しないプロバイダー行である。境界例は制約が存在するのにプロバイダー行が引用しない場合で、これは追跡不能として不合格になる。
 
 ## 配置方式境界
 
-- `single_cloud`: プロバイダー範囲が一件で、採用サービスはそのプロバイダー内にある。
-- `multi_cloud`: 独立したクラウドプロバイダーが二件以上あり、各プロバイダーの責任と障害範囲を図示する。二プロバイダー名の列挙だけでは該当しない。
-- `hybrid`: 一件以上のクラウドプロバイダーとオンプレミス境界があり、接続、trust crossing、運用責任を図示する。
-- `on_prem`: クラウドプロバイダー範囲は空で、クラウド 機能領域は非該当またはオンプレミス実装として明記する。
-- `cloud_undecided`: プロバイダー範囲とサービス 選択を空にし、比較候補、決める問い、作業を止めた選定を残す。
+- 単一クラウド: プロバイダー範囲が一件で、採用サービスはそのプロバイダー内にある。
+- マルチクラウド: 独立したクラウドプロバイダーが二件以上あり、各プロバイダーの責任と障害範囲を図示する。二プロバイダー名の列挙だけでは該当しない。
+- hybrid: 一件以上のクラウドプロバイダーとオンプレミス境界があり、接続、信頼境界の通過、運用責任を図示する。
+- オンプレミス: クラウドプロバイダー範囲は空で、クラウドの選定項目は非該当またはオンプレミス実装として明記する。
+- 未決: 配置方式を決め切れないときは、根拠が最も強い方式を候補として代替案比較に置き、採らなかった方式を決める問い（`ARC-OQ-`）として残す。
 
-典型例: データ所在地、既存契約、運用スキル、品質、利用・負荷を比較し、プロバイダー A一件を採用するなら`single_cloud`である。
+典型例: データ所在地、既存契約、運用スキル、品質、利用・負荷を比較し、プロバイダー A一件を採用するなら単一クラウドである。
 
-似て非なる例: バックアップを別プロバイダーへ出力するだけで、サービス責任が二クラウドへ分割されない場合は`multi_cloud`と断定しない。
+似て非なる例: バックアップを別プロバイダーへ出力するだけで、サービス責任が二クラウドへ分割されない場合はマルチクラウドと断定しない。
 
 反例: 「可用性向上のためマルチクラウド」と書き、障害 独立性、データ整合性、運用性、費用を比較しない。
 
@@ -28,85 +28,64 @@
 
 ## 選定と代替案
 
-次の12機能領域を一度ずつ評価する。括弧内は現行公開契約で固定する機械値である。
+次の12選定項目を「代替案比較」の表に各1行で評価する。行の名前はこの語をそのまま使う。
 
-1. プロバイダー（`provider`）
-2. リージョンと可用性ゾーン（`region_az`）
-3. 計算処理（`compute`）
-4. ネットワーク（`network`）
-5. 保管（`storage`）
-6. データベース（`database`）
-7. メッセージング（`messaging`）
-8. 識別（`identity`）
-9. 外部入口（`edge`）
-10. 可観測性（`observability`）
-11. バックアップと災害復旧（`backup_dr`）
-12. 配置（`delivery`）
+1. プロバイダー
+2. リージョン/AZ
+3. 計算処理
+4. ネットワーク
+5. ストレージ
+6. データベース
+7. メッセージング
+8. ID管理
+9. エッジ
+10. 可観測性
+11. バックアップ/DR
+12. デリバリー
 
-採用済み（機械値: `selected`）は、選択、プロバイダー、サービス、役割に加え、要求・品質・利用負荷の設計根拠、制約、代替案、ADR、検証を最低一件ずつ持つ。
+採用（状態`agreed_decision`または`hypothesis`）の行は、採用候補、1つ以上の代替案、要求・品質・利用負荷・制約の根拠ID、利点、不利・リスクを持つ。`agreed_decision`は利用者が合意した選定だけに使う。
 
-未決（機械値: `unresolved`）は選択、プロバイダー、サービスを`null`にし、作業を止める問いを持つ。非該当（`not_applicable`）もこれらを`null`にし、対象境界に基づく理由を持つ。
+未決（状態`open_question`）の行は採用候補を`未決`にし、根拠IDに決める問い（`*-OQ-`）を引く。非該当（状態`not_applicable`）の行は採用候補を`非該当`にし、不利・リスクに対象境界に基づく理由を書く。
 
-代替案は最低二件とし、設計根拠、利点、欠点、リスク、費用への影響、運用性への影響を持つ。後続利用可能状態では採用（機械値: `chosen`）を一件だけにする。人気、慣例、プロバイダー一覧に載っていることは設計根拠ではない。
+人気、慣例、プロバイダー一覧に載っていることは根拠ではない。
 
 ## 図の観測可能性
 
-`diagram.notation`は`mermaid`、`editable`はtrue、`source`は`flowchart`で始める。根拠と構造化要素は同じIDを使う。
+「インフラ構成図」はMermaidの`flowchart`で始まる1つのブロックである。「採用構成」の全`NODE-`を`NODE_EDGE["NODE-EDGE<br/>公開入口"]`のように表示名に含め、境界・可用性単位は`subgraph`と`end`を対応させて描く。
 
-- `boundaries`: システム、信頼境界、外部を最低一件ずつ持つ。
-- `nodes`: 表示名、選定IDまたは外部、境界ID、可用性単位IDを持つ。クラウド未決時は候補（機械値: `candidate`）ノードから未決の選定へ結ぶ。
-- `flows`: 始点・終点、データ、同期（`sync`）または非同期（`async`）、通信規約、信頼境界の通過、障害時の挙動を持つ。
-- `external_dependencies`: 外部ノード、責任者、契約参照を持つ。
-- `availability_units`: 障害範囲とノードIDを持つ。各単位はMermaid記法で`subgraph AU001["AU-001 ..."]`のように、ハイフンを除いた別名と元IDを表示名に持つ描画対象として表す。コメント内のID列挙は描画扱いにしない。
+- 境界: 公開境界、信頼境界、外部を`subgraph`または外部ノードで示す。
+- ノード: 採用構成の`NODE-`と、外部依存（外部通知事業者など）を置く。未決の選定は候補として`open_question`の`NODE-`で示す。
+- 流れ: 同期・非同期（実線・点線）と信頼境界の通過をラベルで示す。
+- 可用性単位: 配置判断に影響する場合だけ`subgraph`で示す。
 
-Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを含む。図だけに情報を隠さず、構造だけ作って空のMermaidを返さない。
+図だけに情報を隠さず、採用構成の表と図のノードを一致させる。
 
-## 正本スキーマ
+## 正本の記法と機械検査の宣言
 
-最上位キーは次の18件だけにする。
+正本はwrite-docが保存するMarkdownだけであり、JSON正本は持たない。`scripts/architecture.py check --provider <aws|gcp> --upstream <要求発見正本> --upstream <利用負荷モデル正本> --upstream <品質要求正本>`は本文を標準入力で受け、次の宣言に従って構造契約だけを検査する。選定の妥当性、トレードオフの適否、障害経路の十分性はagentが読んで評価する。
 
-- `schema_version`
-- `artifact`
-- `input_artifacts`
-- `provider_decision`
-- `drivers`
-- `constraints`
-- `scope`
-- `deployment_model`
-- `alternatives`
-- `selections`
-- `adrs`
-- `diagram`
-- `failure_scenarios`
-- `traceability`
-- `verification_plan`
-- `open_questions`
-- `question_review`
-- `change_log`
-- `terminology`
+```text
+正本: write-docの cloud-architecture 型のtemplateが定める記法。公開入力 provider。上流正本（--upstream）が定義する REQ- / DRV- / WL- / DIN- / QR- / QCON- と上流の HYP / OQ。この文書の判断境界。
+入力: 標準入力の本文（UTF-8 Markdown）、--provider（aws | gcp）、--upstream の上流正本の絶対path（複数可）。
+正規化: HTMLコメントを除き、コードブロック外の `#` 見出しでH2節へ切る。表は見出し行・区切り行・本文行に分け、セルの `*` と backtick を除く。mermaid ブロックは ``` で切り出す。上流正本からは表の1列目と `### <ID>:` 小見出しのIDを定義済みIDとして拾う。
+合格述語:
+  - --provider が aws / gcp のどれか
+  - H2が template の名前と順序に一致し、H1と冒頭の本文段落があり、どの節も空でない
+  - `## 設計入力と制約` の表の入力IDが到達し、CON- が一意で根拠状態が fact / agreed_decision / hypothesis、agreed_decision の CON- が1つ以上ある
+  - `## 代替案比較` の表が12選定項目を各1行持ち、状態が agreed_decision / hypothesis / open_question / not_applicable。open_question は採用候補 未決 で根拠IDに `*-OQ-` を引き、その問いが `## 仮説と未決` の open_question 行にある。not_applicable は採用候補 非該当 で不利・リスクが指示語でない。それ以外は採用候補が指示語でなく、代替案が なし でなく、根拠IDが到達する。プロバイダー行は agreed_decision、採用候補が --provider の表示名（AWS / GCP）、根拠IDに agreed_decision の CON- を含む
+  - `## 採用構成` の表の NODE- が一意で、状態が agreed_decision / hypothesis / open_question、根拠IDが到達する
+  - `## ADR` の表の ADR- が一意で、状態が agreed_decision / hypothesis、根拠IDが到達する
+  - `## インフラ構成図` に mermaid ブロックが1つあり、flowchart で始まり、subgraph と end の数が一致し、全 NODE- が現れる
+  - `## 障害・縮退経路` の表の FAIL- が一意で、起点が NODE- へ到達し、関連IDが到達する
+  - `## 要求トレーサビリティ` の表に全 ADR- と全 NODE- が現れ、要求ID・負荷ID・品質要求IDが上流へ到達する
+  - `## 仮説と未決` の表の ID が `<接頭辞>-HYP-` / `<接頭辞>-OQ-` で、根拠状態がID種別と一致し、検証計画が空でなく、ARC- 以外の接頭辞は上流で定義済み
+  - 本文（冒頭を含む）で引く NODE / ADR / FAIL / CON / ARC-HYP / ARC-OQ と上流の REQ / DRV / WL / DIN / QR / QCON と上流の HYP / OQ がすべて定義済み。上流家族を引きながら --upstream が無ければ不合格
+  - status は open_question が無く、open_question の選定項目が無く、agreed_decision の ADR- が1つ以上あるとき ready、それ以外は unresolved
+失敗時の診断: 標準エラーに `FAIL: <理由>`（節名、ID、列、期待した語彙、未解決ID）を1件。終了code 2
+正例: tests/fixtures/design-cloud-architecture/success.md（--provider aws、--upstream に3 fixture。status: unresolved）。未決を解き ADR を agreed_decision にした写し（status: ready）
+反例: --provider azure、--provider gcp と AWS の採用候補、hypothesis の CON- しか無い、プロバイダー行の根拠IDに CON- が無い、12項目に欠けや重複、open_question の行に採用候補、決める問いを引かない open_question の行、代替案 なし、mermaid に無い NODE-、subgraph/end 不対応、graph で始まる図、追跡に無い NODE-、起点が NODE- でない FAIL-、ADR の状態 accepted、上流に無い REQ-
+境界例: 節内の本文段落は表と共存できる。NODE_DB のような下線名は図の内部名であり NODE- ではない（採用構成の図ノードIDは NODE-）。上流の未決の継続行は上流IDをそのまま使う
+意味評価として残す範囲: 配置方式の判定、選定と代替案の比較の妥当性、ADR の文脈と帰結、障害経路の網羅と縮退の妥当性、図が判断に重要な境界と流れを示しているか、追跡の意味上の正しさ、用語正本の語の使い方
+```
 
-`artifact`は`id`、`version`、`subject`、`state`を持つ。状態は`ready_for_implementation_handoff`または`saved_with_open_questions`である。
-
-`provider_decision`は`provider`と`constraint_id`を持つ。プロバイダーは`aws`または`gcp`、`constraint_id`は`classification=agreed_decision`の制約IDである。単一クラウド、マルチクラウド、hybridでは入力プロバイダーがプロバイダー範囲に含まれ、採用済み機能領域のプロバイダーは入力プロバイダーと一致する。
-
-`drivers`は`id`、`kind`、`upstream_ref`、`source_artifact_id`、`state`、`statement`、`observed_at`、`impact`を持つ。kindは要求、品質、利用・負荷の一つである。
-
-`constraints`は`id`、`type`、`statement`、`classification`、`source_artifact_id`、`source_ref`、`observed_at`を持つ。
-
-`deployment_model`は`mode`、`provider_scope`、`decision_state`、`constraint_ids`、`alternative_id`、`open_question_ids`を持つ。プロバイダー範囲に置けるクラウドプロバイダーは`aws`と`gcp`だけである。
-
-`selections`は`id`、`category`、`status`、`choice`、`provider`、`service`、`role`、`requirement_driver_ids`、`quality_driver_ids`、`workload_driver_ids`、`constraint_ids`、`alternative_ids`、`adr_ids`、`verification_ids`、`rationale`、`open_question_ids`を持つ。
-
-`adrs`は`id`、`status`、`title`、`context`、`decision`、`alternative_ids`、`selection_ids`、`driver_ids`、`positive_consequences`、`negative_consequences`、`follow_ups`、`verification_ids`を持つ。
-
-`failure_scenarios`は`id`、`trigger`、`affected_availability_unit_ids`、`affected_selection_ids`、`detection`、`degradation_behavior`、`recovery`、`requirement_driver_ids`、`verification_ids`を持つ。
-
-`traceability`は選定ごとに`selection_id`、`requirement_driver_ids`、`quality_driver_ids`、`workload_driver_ids`、`constraint_ids`、`adr_ids`、`verification_ids`を持ち、選定上の集合と一致する。
-
-`verification_plan`は`id`、`kind`、`objective`、`method`、`expected_evidence`、`owner`、`status`、`trace_refs`を持つ。実行していない検証は計画済みにする。
-
-`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`open`の`reason`には、その時点の根拠から仮置きした推奨、その根拠、採らなかった代替案を書き、推奨は`unresolved`のままの選定に添える候補または`proposed`のADRとして扱う。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。
-
-未決の問いがある、配置判断が未決、選定が未決、採用済みADRがない場合は状態を`saved_with_open_questions`にする。それ以外は`ready_for_implementation_handoff`にできる。
-
-`change_log`は版ごとに`version`、`changed_input_ids`、`invalidated_refs`、`summary`を持つ。
+用語正本との整合はこの型の正本ではscriptで検査しない。用語正本があるときは、本文の語が用語正本の推奨用語名と一致するかをagentが読んで確かめる。

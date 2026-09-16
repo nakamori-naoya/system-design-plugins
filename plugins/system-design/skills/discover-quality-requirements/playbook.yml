@@ -1,16 +1,21 @@
+# discover-quality-requirements — 上流資料から測定可能な品質要求正本（quality-requirements型のMarkdown）を1本作る。
+# 工程順と入出力だけを持つ。判断規律はSKILL.mdとreferencesが持つ。対話の作法はgrillの公開契約が持つ。
+# 本文はagentがインメモリで保持し、検査scriptへは標準入力で渡す。JSONも一時fileも作らず、保存はwrite-docが行う。
 version: 2
 name: discover-quality-requirements
-description: 測定可能な品質要求のJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
-inputs: [request, requirements_baseline, workload_model, journey_or_domain_artifacts, document_destination]
+description: 要求・利用負荷・合意から、観測点・指標・閾値・時間窓・母集団・検証方法を持つ品質要求正本（Markdown）を同じagentが宣言順に作る。
+inputs: [request, references, requirements_document_path, workload_document_path, journey_or_domain_artifacts, document_destination]
 instructions:
   execution:
     directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
 requires:
+  - {plugin: grill, marketplace: grill}
   - {plugin: write-doc, marketplace: write-doc}
 steps:
   - id: fix-upstream-and-claims
     agent_work: invoking_agent
-    purpose: "上流成果物と品質根拠主張を固定する"
+    purpose: "依頼、referencesの資料、要求発見正本、利用負荷モデル正本、ユーザージャーニー・ドメイン成果物を読み、上流成果物と品質根拠主張を固定する"
+    needs: [request, references, requirements_document_path, workload_document_path, journey_or_domain_artifacts]
   - id: classify-quality-categories
     agent_work: invoking_agent
     purpose: "品質区分を一件ずつ判定する"
@@ -26,28 +31,29 @@ steps:
   - id: record-design-sensitivity
     agent_work: invoking_agent
     purpose: "後続設計へ渡す感度を記録する"
-  - id: confirm-question-inventory
-    agent_work: invoking_agent
-    purpose: "成果を左右する問いを最大6問まで推奨付きで確認し、残る論点は推奨を仮置きした未決にし、全質問の状態・解決・撤回理由・影響先を一覧提示して一覧全体とこの実行での対話終了の明示確認を得る"
-    provides: [question_review]
-  - id: validate-and-save-canonical
-    agent_work: invoking_agent
-    purpose: "scripts/quality.pyでJSON正本を検査して保存する"
-    needs: [question_review]
-    provides: [quality_artifact_path]
+  - id: settle
+    playbook: grill
+    purpose: "手順1〜6で残った未決のうち、答えで観測点・閾値・母集団・時間窓・矛盾の解消・引き渡しが変わる問いを成果を左右する順に推奨付きでquestionsへ渡し、grillの公開契約に従って利用者と解消し、決定と未決（推奨付き）を受け取る"
+    needs: [request, references]
+    provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を組み立てる"
-    needs: [quality_artifact_path]
+    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として仮説と未決へ書き、templateの記法で本文をインメモリで組み立てる"
+    needs: [decisions, open_questions]
     provides: [quality_document_text]
+  - id: verify
+    script: scripts/quality.py
+    purpose: "本文を標準入力、要求発見と利用負荷の正本を--upstreamで受け、H2の集合と順序、QR・QCONの一意性と参照到達、分類10語と閾値の記法、10区分の網羅、未決の区分と open の矛盾が問いへ結ばれること、全QRの追跡を述語として検査し、statusとID一覧を返す"
+    needs: [quality_document_text, requirements_document_path, workload_document_path]
+    provides: [verification_result]
   - id: save-markdown-canonical
     playbook: write-doc
-    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してquality-requirements型の資料を1本保存する"
+    purpose: "同じagentが検査済み本文をkind: textのmaterialにし、document_destinationの保存先と入力のreferencesをそのまま渡してquality-requirements型の資料を1本保存する"
     input:
       document_type: quality-requirements
-    needs: [quality_document_text, document_destination]
+    needs: [quality_document_text, verification_result, document_destination, references]
     provides: [quality_document_path]
   - id: read-back-document
     agent_work: invoking_agent
-    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、測定条件、未決、handoffが欠落・昇格していないことを確かめる"
-    needs: [quality_artifact_path, quality_document_path]
+    purpose: "保存した資料を読み戻し、検査した本文と同じID、測定条件、根拠状態、未決、statusを保っていることを確かめる"
+    needs: [quality_document_path, verification_result]
