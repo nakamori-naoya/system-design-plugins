@@ -1,6 +1,6 @@
 # 要求発見正本の契約
 
-この参照資料は、要求発見正本の項目と判断境界を定める。要求の内容そのもの、ユーザージャーニー、ドメイン、データモデル、技術方式、クラウド選定は定めない。
+この参照資料は、要求発見正本の判断境界と、正本（requirements-discovery型のMarkdown）に対する機械検査の宣言を定める。要求の内容そのもの、ユーザージャーニー、ドメイン、データモデル、技術方式、クラウド選定は定めない。正本の記法（見出し・表の列・ID）はwrite-docの`requirements-discovery`型のtemplateが定める。
 
 ## 中核概念と行動
 
@@ -10,10 +10,10 @@
 
 | 状態 | 該当条件 | 要求・受入条件への行動 |
 |---|---|---|
-| `fact` | 観測対象、条件、時点、根拠 所在情報がある | 必要性の根拠に使える。観測した事実だけで将来の受入目標を決めない |
+| `fact` | 観測対象、条件、時点、出典がある | 必要性の根拠に使える。観測した事実だけで将来の受入目標を決めない |
 | `agreed_decision` | 決定者、対象範囲、決定内容がある | 要求または受入観測の根拠に使える |
-| `hypothesis` | 予測、提案、推定であり反証が残る | `hypotheses`へ置き、確認済み要求や受入観測へ使わない |
-| `open_question` | 回答により要求、境界、受入が変わる | 回答者、影響ID、止める判断を記録する |
+| `hypothesis` | 予測、提案、推定であり反証が残る | 「後続設計で決める論点」へ`REQ-HYP-`として置き、確認済み要求や制約の根拠に使わない |
+| `open_question` | 回答により要求、境界、受入が変わる | 「後続設計で決める論点」へ`REQ-OQ-`として置き、送り先、守る成果、検証計画を記録する |
 
 典型例: 問い合わせ記録に「利用者の30%が申請結果を電話確認した」と期間付きである。これは事実であり、「電話確認をゼロにする」はまだ合意済み目標ではない。
 
@@ -27,11 +27,11 @@
 
 要求は、受益者が必要とする結果について、根拠、合意済み成功観測、検証方法、満たす／満たさない影響が揃った項目である。仮説は、必要性または手段を確かめる余地が残る項目である。
 
-要求に見える具体的な文章でも根拠が仮説なら`requirements`へ入れない。逆に、技術語を含んでいても決定権者が必須制約として合意していれば、目的ではなく`constraints`へ置ける。
+要求に見える具体的な文章でも根拠が仮説なら`REQ-`にしない。逆に、技術語を含んでいても決定権者が必須制約として合意していれば、目的ではなく固定制約（`CON-`）へ置ける。
 
 ### 成功観測と受入条件
 
-成功観測は、誰が何を見て業務結果の成立を判断するかである。`requirements[].success_observation_ids`へ結べるのは`agreed_decision`の観測だけである。事実は現在地の観測であり、将来の受入目標とは限らない。仮説は候補であり、受入条件ではない。
+成功観測は、誰が何を見て業務結果の成立を判断するかである。`REQ-`の検証方法と「観測可能な完了」に書けるのは`agreed_decision`の観測だけである。事実は現在地の観測であり、将来の受入目標とは限らない。仮説は候補であり、受入条件ではない。
 
 ## 手段指定（How）の分類
 
@@ -39,8 +39,8 @@
 
 1. 決定権者、対象範囲、決定時点が揃い、選択余地を拘束するか。該当するなら`constraint`。
 2. 特定の結果を満たすと予測しているが検証・合意が残るか。該当するなら`hypothesis`。
-3. 後続で比較・選定する候補か。該当するなら`design_proposal`。
-4. どれか判定できない場合は、決定済みか候補かを一問で確認して停止する。
+3. 後続で比較・選定する候補か。該当するなら設計案として「後続設計で決める論点」の送り先へ送る。
+4. どれか判定できない場合は`hypothesis`に分類し、分類が要求または後続設計を変えるなら決める問いを未決へ結ぶ（成果を左右するならgrillで問う）。
 
 典型例: 「Redisなら速くなるはず」は仮説にし、対象操作、測定方法、反証条件を残す。
 
@@ -52,11 +52,11 @@
 
 導出要件は、入力にそのまま書かれていないが、確認したサービス特性から避けるべき失敗と必要な成果を因果で説明できる要件である。次の五項目を一組にする。
 
-1. `service_characteristic`: 負荷、保持、偏り、整合性、障害波及、再試行などの観測または仮定。
-2. `failure_risk`: その特性から誰に何が起こるか。
-3. `required_outcome`: 実現手段を外しても成立する必要な成果。
-4. `design_impacts`: 後続が比較する設計上の関心。
-5. `revisit_when`: 特性または仮定を再確認する条件。
+1. 特性: 負荷、保持、偏り、整合性、障害波及、再試行などの観測または仮定（根拠IDと根拠状態）。
+2. 失敗リスク: その特性から誰に何が起こるか。
+3. 必要な成果: 実現手段を外しても成立する必要な成果。
+4. 設計への影響: 後続が比較する設計上の関心。
+5. 見直し条件: 特性または仮定を再確認する条件。
 
 典型例: 一部の発生元だけ配信先数が桁違いに多いという観測から、一操作の処理増幅を通常利用者へ波及させない成果を導く。配信方式の候補は設計影響であり、キュー製品や分割数は導出要件にしない。
 
@@ -66,9 +66,9 @@
 
 境界例: 同じ方式でも、利用者が対象と必須性を決めた場合は固定制約、確認済み導出要件から他の方式では成果を満たせない場合は理由付き設計判断、候補が複数ある場合は設計案である。
 
-`design_decisions`へ置けるのは、合意済み決定を根拠にするか、確認済み導出要件から論理的に不可避な方式だけである。いずれも採用理由と見直し条件を必須にする。実装製品、API項目、表、キュー、キャッシュ期限などの詳細は`solution_inputs`から後続へ送る。
+`DEC-`へ置けるのは、合意済み決定（`agreed_decision`の`SRC-`）を根拠にするか、確認済み導出要件（`DRV-`）から論理的に不可避な方式だけである。いずれも採用理由と見直し条件を必須にする。実装製品、API項目、表、キュー、キャッシュ期限などの詳細は「後続設計で決める論点」から後続へ送る。
 
-`scope_budget`は機能一覧ではなく実装可能性を閉じる。`implementation_scope`、`design_only_scope`、`out_of_scope`、`delivery_constraints`を分け、世界規模の設計説明を初期実装の合格値へ暗黙に昇格させない。
+スコープは機能一覧ではなく実装可能性を閉じる。提供価値、実装必須、設計説明のみ、対象外を分け、予算（期間、基盤、再現範囲）を書き、世界規模の設計説明を初期実装の合格値へ暗黙に昇格させない。
 
 ## 操作とイベントの分類
 
@@ -86,146 +86,37 @@
 
 境界例: 「注文登録」という名詞句だけでは意図と完了事実を区別できない。「注文を登録する」という状態変更の意図はコマンド、「注文が登録された」という完了事実はコマンドイベントとして別に記録する。これらの語を汎用既定へ登録しない。
 
-## JSONスキーマ
+## 正本の記法と機械検査の宣言
 
-正本はUTF-8 JSON object、`schema_version=2`とする。最上位は基礎14項目に`derived_requirements`、`design_decisions`、`scope_budget`、`decision_history`、`terminology`、`interaction_catalog`を加えた20項目である。次のJSONは基礎項目の形を説明する抜粋であり、検査可能な正本は後続の全項目規則を満たす。
+正本はwrite-docが保存するMarkdownだけであり、JSON正本は持たない。`scripts/requirements.py check`は本文を標準入力で受け、次の宣言に従って構造契約だけを検査する。内容の正しさ、十分性、目的への適合はagentが読んで評価する。
 
-```json
-{
-  "schema_version": 2,
-  "artifact": {
-    "id": "REQDOC-order-status",
-    "version": 1,
-    "subject": "申請結果確認",
-    "state": "ready_for_downstream"
-  },
-  "claims": [
-    {
-      "id": "CLM-001",
-      "statement": "申請者が結果確認のため電話している",
-      "classification": "fact",
-      "source": "問い合わせ集計 2026-Q2 p.4",
-      "observed_at": "2026-07-01",
-      "owner": "サポート責任者"
-    },
-    {
-      "id": "CLM-002",
-      "statement": "申請者が結果と次の行動を確認できれば受入とする",
-      "classification": "agreed_decision",
-      "source": "要求確認会議 DR-2026-018",
-      "observed_at": "2026-07-08",
-      "owner": "業務責任者"
-    }
-  ],
-  "stakeholders": [
-    {
-      "id": "STK-001",
-      "role": "申請者",
-      "relationship": "beneficiary",
-      "interest": "申請結果を確認できる",
-      "claim_ids": ["CLM-001"]
-    }
-  ],
-  "purpose": {
-    "beneficiary_ids": ["STK-001"],
-    "problem": "結果確認に別経路が必要",
-    "desired_outcome": "申請者が結果を確認できる",
-    "claim_ids": ["CLM-001"]
-  },
-  "observations": {
-    "success": [
-      {
-        "id": "OBS-S-001",
-        "statement": "申請者が結果と次の行動を確認できる",
-        "observer": "申請者",
-        "classification": "agreed_decision",
-        "claim_ids": ["CLM-002"],
-        "verification_method": "対象申請の受入観察"
-      }
-    ],
-    "failure": [
-      {
-        "id": "OBS-F-001",
-        "statement": "申請者が結果を確認できず問い合わせる",
-        "observer": "申請者",
-        "classification": "fact",
-        "claim_ids": ["CLM-001"],
-        "verification_method": "問い合わせ理由の集計"
-      }
-    ]
-  },
-  "scope": {
-    "in": [{"id": "SCP-I-001", "statement": "申請結果の提示", "claim_ids": ["CLM-002"]}],
-    "out": [{"id": "SCP-O-001", "statement": "審査規則の変更", "claim_ids": ["CLM-002"]}]
-  },
-  "system_boundary": {
-    "responsibilities": [{"id": "BND-S-001", "statement": "確定した申請結果を提示する", "claim_ids": ["CLM-002"]}],
-    "external_parties": [{"id": "BND-E-001", "statement": "審査担当が結果を確定する", "claim_ids": ["CLM-002"]}]
-  },
-  "constraints": [],
-  "requirements": [
-    {
-      "id": "REQ-001",
-      "statement": "申請者は確定した申請結果と次の行動を確認できる",
-      "beneficiary_ids": ["STK-001"],
-      "claim_ids": ["CLM-001", "CLM-002"],
-      "success_observation_ids": ["OBS-S-001"],
-      "verification_method": "対象申請の受入観察",
-      "impact": {"if_met": "別経路なしで次へ進める", "if_unmet": "問い合わせが必要になる"},
-      "affects": ["workload", "quality", "cloud_design"]
-    }
-  ],
-  "hypotheses": [],
-  "open_questions": [],
-  "question_review": {
-    "question_ids": [],
-    "confirmed_by": "利用者",
-    "confirmation": "質問一覧全体と対話終了を確認した",
-    "dialogue_complete": true
-  },
-  "solution_inputs": [],
-  "handoff": {
-    "ready": true,
-    "blocking_question_ids": [],
-    "downstream": {
-      "workload": ["REQ-001"],
-      "quality": ["REQ-001"],
-      "cloud_design": ["REQ-001"]
-    }
-  }
-}
+```text
+正本: write-docの requirements-discovery 型のtemplateが定める記法（H2見出しの名前と順序、`### <ID>: <一文>` とラベル行、表の列、ID接頭辞、根拠状態の機械値）。この文書の判断境界。
+入力: 標準入力の本文（UTF-8 Markdown）だけ。上流正本は無い。
+正規化: HTMLコメントを除き、コードブロック外の `#` 見出しでH2節へ切る。表は見出し行・区切り行・本文行に分け、セルの `*` と backtick を除く。IDは `<接頭辞>-<3桁以上>`（`REQ-HYP-` / `REQ-OQ-` を含む）のtokenで拾う。
+合格述語:
+  - H2が template の名前と順序に一致し、H1と冒頭の本文段落があり、どの節も空でない
+  - `## 根拠` の表（根拠ID | 出典 | 観測時点 | 根拠状態）の SRC- が一意で、根拠状態が fact / agreed_decision / hypothesis のどれか1つ
+  - `## サービス特性と導出要件` の `### REQ-nnn:` が 受益者 / 必要な成果 / 検証方法 / 根拠 の行を持ち、根拠に fact か agreed_decision の SRC- を1つ以上引く。`### DRV-nnn:` が 特性 / 失敗リスク / 必要な成果 / 設計への影響 / 見直し条件 の行を持ち、特性に SRC- を1つ以上引く
+  - `## 理由付き設計判断` の `### DEC-nnn:` が agreed_decision の SRC- または DRV- を1つ以上引く
+  - `## 固定制約` の表の CON- が一意で、根拠ID・根拠状態が fact / agreed_decision の SRC- だけを引く
+  - `## スコープ` の表の区分が 提供価値 / 実装必須 / 設計説明のみ / 対象外 を各1行持つ
+  - `## コマンドとクエリ` の表で、操作名が一意、種別が コマンド / クエリ / —、イベント種別が コマンド / クエリ / 時間 / システム / —、対象が 対象内 / 対象外 / 設計説明のみ / 未決。コマンドの成功イベントはコマンドイベント、クエリは クエリ / —、— は 時間 / システム。対になる操作は同じ表の操作名か なし で、相互に参照する
+  - `## 用語` の1行目が `用語正本: <絶対path> 版: <整数>`（2行目に `推奨用語名:`）または `用語正本: なし`
+  - `## 後続設計で決める論点` の表の ID が REQ-HYP- / REQ-OQ- で、根拠状態（hypothesis / open_question）がID種別と一致し、守る成果に REQ- / DRV- を引き、検証計画が空でない
+  - `## 観測可能な完了` の表に全 REQ- / DRV- が現れる
+  - 本文（冒頭を含む）で引く SRC / REQ / DRV / DEC / CON / REQ-HYP / REQ-OQ がすべて定義済み。IDは全体で一意
+失敗時の診断: 標準エラーに `FAIL: <理由>`（節名、ID、列、期待した語彙）を1件。終了code 2
+正例: tests/fixtures/discover-requirements/success.md（status: unresolved）。未決の行を除き用語正本を なし にした写し（status: ready）
+反例: hypothesis の SRC- だけを根拠にした REQ-、fact の SRC- だけを引く DEC-、hypothesis を根拠にした CON-、未定義の DRV- を引く 守る成果、対操作の片方向参照、観測可能な完了に無い DRV-、順序を入れ替えたH2
+境界例: `**` で始まる冒頭段落は本文段落として受理する。節内の本文段落は表・ラベル行と共存できる。下流のID（WL- / QR- / DEC以外の家族）は参照到達を検査しない。`用語正本: なし` は正例
+意味評価として残す範囲: 根拠の分類が観測条件と決定者に照らして正しいか、REQ / DRV の因果が成り立つか、DEC が本当に不可避か、スコープと境界が対象を閉じているか、コマンド・クエリの粒度、問いの選定と推奨の妥当性、用語正本の語の使い方
 ```
 
-## 項目規則
-
-- `schema_version`: 現行値は2だけである。旧版を現行正本として読取り、更新、変換する経路は持たない。
-
-- `artifact.state`: `ready_for_downstream`または`saved_with_open_questions`。
-- `claims[].classification`: `fact`、`agreed_decision`、`hypothesis`、`open_question`。
-- `stakeholders[].relationship`: `beneficiary`または`stakeholder`。beneficiaryを最低1件持つ。
-- `observations.success`と`observations.failure`: 各1件以上。要求へ結べるsuccessは`agreed_decision`だけ。
-- `constraints[].kind`: `business`、`regulatory`、`organizational`、`technical`。
-- `constraints[].classification`: `fact`または`agreed_decision`。未確認の制約は仮説へ置く。
-- `requirements`: 根拠主張 ID、受益者ID、成功観測ID、検証方法、`impact.if_met`、`impact.if_unmet`、`affects`を必須にする。根拠主張は`fact`または`agreed_decision`だけ。
-- `hypotheses`: `id`、`statement`、仮説の`claim_ids`、`falsification_method`、`affected_ids`を持つ。
-- `open_questions`: 質問台帳であり、`id`、`question`、根拠の`claim_ids`、`owner`、`affected_ids`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`open`の`reason`には、その時点の根拠から仮置きした推奨、その根拠、採らなかった解釈を書き、推奨の内容は正本側で`hypothesis`として扱う。
-- `question_review`: 質問台帳の全ID、確認者、一覧全体の確認内容、対話終了の真偽を持つ。全質問IDが一致し、`dialogue_complete=true`になるまで正本を保存しない。
-- `solution_inputs[].classification`: `constraint`、`hypothesis`、`design_proposal`。`linked_id`はそれぞれCON、HYP、nullにする。設計案の`routed_to`には要求を変更せず技術方式を比較・選定する責務の機械識別子を記録する。
-- `derived_requirements[]`: `DRV-` ID、`statement`、`classification`、`derived_from_claim_ids`、サービス特性、失敗リスク、必要な成果、検証方法、設計影響、見直し条件、後続を持つ。`confirmed`は確認済み根拠だけ、`hypothesis`は仮説根拠を一件以上持つ。
-- `design_decisions[]`: `DEC-` ID、方式、`basis`、根拠主張、導出要件、理由、見直し条件、後続を持つ。`basis=agreed_decision`は合意済み根拠を、`basis=logically_required`は導出要件を必要とする。
-- `scope_budget`: 実装必須、設計説明のみ、対象外、実現上の制約を別々の配列で持つ。
-- `decision_history`: 成果物版ごとに変更した根拠と影響IDを残し、1から現在版まで連続させる。
-- `terminology`: 定義本体ではなく、共有Markdown用語正本の`locator`、1以上の整数`version`と、正本内項目から日本語の`preferred_terms`への参照を持つ。用語や用語正本のIDを必須にせず、同じ項目の参照を複数箇所へ重複させない。
-- `interaction_catalog.commands[]`: `CMD-` ID、名前、アクター、確認済み根拠、状態変更対象、成功時の`CEVT-` IDを持つ。`counterpart_review`は`paired`、`not_applicable`、`unresolved`の一つとし、`paired`は対コマンドを相互参照する。`unresolved`は`counterpart_open_question_ids`へ一件以上を結ぶ。`non_success_outcomes`は`no_change`、`rejected`、`failed`を別々に持ち、`defined`、`unresolved`、`not_applicable`の状態に応じて確定文または未決の問いを記録する。
-- `interaction_catalog.queries[]`: `QRY-` ID、名前、アクター、確認済み根拠、読み取る対象、成功時の`QEVT-` IDを持つ。状態変化を持たせない。
-- `interaction_catalog.command_events[]`: `CEVT-` ID、過去形の名前、確認済み根拠、完了事実、業務状態の対象、変更前後を持つ。変更前後が同じものはコマンドイベントにしない。
-- `interaction_catalog.query_events[]`: `QEVT-` ID、過去形の名前、確認済み根拠、完了事実、読み取りにより観測できた結果を持つ。業務状態変化を持たせず、クエリの成功イベントとして参照する。
-- `interaction_catalog.time_events[]`: `TEVT-` ID、過去形の名前、確認済み根拠、時刻または期限到達の事実、その時間上の基準を持つ。コマンド、クエリ、内部処理の事実として扱わない。
-- `interaction_catalog.system_events[]`: `SEVT-` ID、過去形の名前、確認済み根拠、内部処理の観測事実、任意の関連イベントIDを持つ。業務状態変化を持たせず、コマンドまたはクエリの成功イベントとして参照しない。
+用語正本との整合（同じ所在・版を参照すること、`推奨用語名:` と コマンド / クエリ の操作名が用語正本の同じ概念種別にあること）は、package共有の `../../scripts/terminology.py check --terminology <用語正本> --artifact <保存した正本>` が用語正本を正解として検査する。
 
 用語正本はMarkdown表にしない。`## アクター`、`## コマンド`、`## クエリ`、`## コマンドイベント`、`## クエリイベント`、`## 時間イベント`、`## システムイベント`、`## 値・指標`、`## 状態`、`## データ`、`## 方針・制約`、`## 業務上の概念`、`## 負荷特性`、`## 設計上の概念`のうち該当する概念種別を置き、その下の`### 日本語の推奨用語名`に定義本文、状態、根拠、見直し条件を記録する。状態変更の意図はコマンド、読み取り専用操作はクエリ、各操作の成立事実はコマンドイベントとクエリイベント、時刻・期限到達は時間イベント、内部処理の観測事実はシステムイベントへ分ける。業務上の対象・関係・情報は業務上の概念、処理量や共有資源への負荷を増やす性質は負荷特性、測定値は値・指標へ分ける。用語見出しの重複と、概念種別に属さない用語を拒否する。
 
 分類例として、会員はアクター、注文を登録する操作はコマンド、注文が登録された事実はコマンドイベント、注文履歴を取得する操作はクエリ、その取得が成立した事実はクエリイベント、保持期限に到達した事実は時間イベント、通知が配信先へ複製された内部処理の事実はシステムイベント、注文・会員関係・注文履歴は業務上の概念、一操作あたりの配信先数の増幅や操作頻度の集中は負荷特性、平均負荷は値・指標に当たる。この例の語や境界値を汎用既定へ登録せず、対象サービスの用語正本で意味を決める。
-- `handoff.ready`がtrueなら作業を止める問いは空で状態は`ready_for_downstream`。falseなら作業を止める問いを1件以上持ち状態は`saved_with_open_questions`。
 
-IDの意味を版更新で別の意味へ使い回さない。変更前のIDを廃止する場合は、その理由と影響を新しい根拠主張または未決の問いとして残す。
+IDの意味を更新で別の意味へ使い回さない。変更前のIDを廃止する場合は、その理由と影響を新しい根拠または未決の問いとして残す。

@@ -1,763 +1,243 @@
 #!/usr/bin/env python3
-"""Validate and safely persist a canonical quality-requirements artifact."""
+"""品質要求正本（quality-requirements型のMarkdown）の構造契約を検査する。
+
+  python3 scripts/quality.py check [--upstream <上流正本の絶対path> ...] < <正本の本文（Markdown）>
+
+入力は標準入力の本文と、`--upstream` で渡した上流正本（要求発見・利用負荷モデル）のpathだけである。REQ- / DRV- /
+CON- / WL- / DIN- と上流の HYP / OQ の参照は上流正本で定義されたIDへ到達しなければならない。一時fileは作らず、保存は
+write-docが行う。通ったときに言えるのは次だけであり、閾値の妥当性や矛盾の扱いの適否は言わない。
+
+  - H2見出しがtemplateの名前と順序に一致し、冒頭に本文段落があり、どの節も空でない
+  - `## 品質要求` の QR- が一意で、分類が10区分のどれか、根拠状態が agreed_decision / hypothesis / open_question、
+    閾値が `<演算子> <数値> <単位>`（open_question の行だけ 未決）で、観測点・指標・時間窓・母集団・検証方法が空でない
+  - `## 品質区分の網羅` が10区分を各1行持ち、指定済みは同じ分類の QR- を1つ以上引き、非該当は QR- を引かない、
+    未決は理由または品質要求IDに `## 仮説と未決` の open_question 行の ID（<接頭辞>-OQ-）を1つ以上引く
+  - `## トレードオフと矛盾` の QCON- が一意で、対立するIDが到達し、状態が open / resolved、open は open_question 行の影響先から参照される
+  - `## 仮説と未決` の ID は QR-HYP- / QR-OQ-（上流の継続は上流ID）、根拠状態は hypothesis / open_question、検証計画が空でない
+  - `## 追跡` に全 QR- が現れ、要求ID・負荷IDが上流へ到達する
+  - 本文中の QR / QCON / QR-HYP / QR-OQ と上流IDの参照がすべて定義済みである（ADR- / NODE- は後続の資料のIDなので検査しない）
+
+exit 0 = 通った（stdoutに status と ID の一覧のJSON） / 2 = 標準入力が空、上流が読めない、または述語が成り立たない
+（診断は標準エラー `FAIL: <理由>`）。
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
-import os
 import re
-import stat
-import tempfile
+import sys
 from pathlib import Path
-from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from canon import (  # noqa: E402  package共有の構文解析と共通述語
+    ContractError,
+    Document,
+    Registry,
+    fail,
+    ids_in,
+    one_of,
+    one_state,
+    read_stdin,
+    read_upstream,
+    single_table,
+    some_states,
+    strip_markup,
+)
+
+SECTIONS = [
+    "対象と入力根拠",
+    "品質要求",
+    "品質区分の網羅",
+    "トレードオフと矛盾",
+    "仮説と未決",
+    "追跡",
+    "この資料に書かないもの",
+]
+QR = re.compile(r"^QR-\d{3,}$")
+QCON = re.compile(r"^QCON-\d{3,}$")
+LOCAL_HYP_OR_OQ = re.compile(r"^QR-(HYP|OQ)-\d{3,}$")
+ANY_HYP_OR_OQ = re.compile(r"^[A-Z]{2,}-(HYP|OQ)-\d{3,}$")
+THRESHOLD = re.compile(r"^(<=|>=|<|>|=)\s*\d[\d,\.]*\s*\S.*$")
+CATEGORIES = ("応答時間", "処理量", "可用性", "整合性", "耐久性", "復旧性", "安全性", "プライバシー", "運用性", "費用")
+QR_STATES = ("agreed_decision", "hypothesis", "open_question")
+COVERAGE = ("指定済み", "未決", "非該当")
+LOCAL_FAMILIES = {"QR", "QCON", "QR-HYP", "QR-OQ"}
+UPSTREAM_FAMILIES = {"REQ", "DRV", "CON", "REQ-HYP", "REQ-OQ", "WL", "DIN", "WL-HYP", "WL-OQ"}
 
 
-TOP_KEYS = {
-    "schema_version",
-    "artifact",
-    "input_artifacts",
-    "claims",
-    "quality_requirements",
-    "category_coverage",
-    "workload_links",
-    "conflicts",
-    "open_questions",
-    "question_review",
-    "handoff",
-    "change_log",
-}
-CATEGORIES = {
-    "latency",
-    "throughput",
-    "availability",
-    "consistency",
-    "durability",
-    "recovery",
-    "security",
-    "privacy",
-    "operability",
-    "cost",
-}
-CLAIM_CLASSES = {"fact", "agreed_decision", "hypothesis"}
-QR_STATES = {"agreed", "hypothesis", "unresolved"}
-CONFIDENCE = {"high", "medium", "low", "unknown"}
-OPERATORS = {"<", "<=", "=", ">=", ">"}
-SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+def check(body: str, upstream: list[str]) -> dict:
+    doc = Document(body)
+    doc.require_sections(SECTIONS)
+    registry = Registry(LOCAL_FAMILIES, UPSTREAM_FAMILIES)
+    for path_text in upstream:
+        registry.add_upstream(read_upstream(path_text), path_text)
 
+    requirements = single_table(
+        doc, "品質要求",
+        ["品質要求ID", "分類", "観測点", "指標", "閾値", "時間窓", "対象母集団", "検証方法", "根拠状態"],
+    )
+    category_of: dict[str, str] = {}
+    state_of: dict[str, str] = {}
+    for row in requirements:
+        identifier = strip_markup(row["品質要求ID"])
+        if QR.fullmatch(identifier) is None:
+            fail(f"品質要求IDの形式が不正です（QR-<数字>）: {identifier}")
+        registry.define(identifier, "品質要求")
+        category_of[identifier] = one_of(row["分類"], CATEGORIES, f"{identifier}.分類")
+        state_of[identifier] = one_state(row["根拠状態"], QR_STATES, f"{identifier}.根拠状態")
+    conflicts = single_table(doc, "トレードオフと矛盾", ["ID", "対立するID", "内容", "判断者", "状態"])
+    conflict_state: dict[str, str] = {}
+    for row in conflicts:
+        identifier = strip_markup(row["ID"])
+        if identifier == "なし":
+            continue
+        if QCON.fullmatch(identifier) is None:
+            fail(f"矛盾IDの形式が不正です（QCON-<数字>）: {identifier}")
+        registry.define(identifier, "トレードオフと矛盾")
+        conflict_state[identifier] = one_of(row["状態"], ("open", "resolved"), f"{identifier}.状態")
+    pending = single_table(doc, "仮説と未決", ["ID", "根拠状態", "内容", "検証計画", "影響先"])
+    for row in pending:
+        identifier = strip_markup(row["ID"])
+        if identifier == "なし":
+            continue
+        if ANY_HYP_OR_OQ.fullmatch(identifier) is None:
+            fail(f"仮説と未決のIDは <接頭辞>-HYP-<数字> または <接頭辞>-OQ-<数字> でなければなりません: {identifier}")
+        if LOCAL_HYP_OR_OQ.fullmatch(identifier):
+            registry.define(identifier, "仮説と未決")
 
-class ContractError(ValueError):
-    pass
+    inputs = single_table(doc, "対象と入力根拠", ["入力ID", "根拠状態", "対象", "品質判断への影響"])
+    for row in inputs:
+        refs = registry.resolve(row["入力ID"], "対象と入力根拠.入力ID")
+        if not refs:
+            fail(f"対象と入力根拠の入力IDに上流IDがありません: {row['入力ID']}")
+        some_states(row["根拠状態"], ("fact", "agreed_decision", "hypothesis", "open_question"), f"{refs[0]}.根拠状態")
 
+    for row in requirements:
+        identifier = strip_markup(row["品質要求ID"])
+        threshold = strip_markup(row["閾値"])
+        state = state_of[identifier]
+        if state == "open_question":
+            if threshold != "未決":
+                fail(f"{identifier} は open_question なので閾値は 未決 でなければなりません: {threshold}")
+        elif THRESHOLD.match(threshold) is None:
+            fail(f"{identifier} の閾値は `<演算子> <数値> <単位>` でなければなりません（演算子は < <= = >= >）: {threshold}")
+        for column in ("観測点", "指標", "時間窓", "対象母集団", "検証方法"):
+            if strip_markup(row[column]) in ("なし", "未決", "—") and state != "open_question":
+                fail(f"{identifier} の{column}が未確定なので agreed_decision / hypothesis にできません")
+        registry.resolve(" ".join(row.values()), identifier)
 
-def fail(message: str) -> None:
-    raise ContractError(message)
+    coverage = single_table(doc, "品質区分の網羅", ["区分", "判定", "理由", "品質要求ID"])
+    seen_categories = [one_of(row["区分"], CATEGORIES, "品質区分の網羅.区分") for row in coverage]
+    if sorted(seen_categories) != sorted(CATEGORIES):
+        fail(f"品質区分の網羅は10区分を各1行持たなければなりません: {seen_categories}")
+    unresolved_categories: list[tuple[str, list[str]]] = []
+    for row in coverage:
+        category = strip_markup(row["区分"])
+        disposition = one_of(row["判定"], COVERAGE, f"品質区分の網羅.{category}.判定")
+        refs = registry.resolve(row["品質要求ID"], f"品質区分の網羅.{category}.品質要求ID")
+        qr_refs = [item for item in refs if item.startswith("QR-") and "-HYP-" not in item and "-OQ-" not in item]
+        if disposition != "非該当" and any(category_of[item] != category for item in qr_refs):
+            fail(f"品質区分の網羅.{category} に別の分類の品質要求があります: {qr_refs}")
+        if disposition == "指定済み":
+            if not qr_refs:
+                fail(f"品質区分の網羅.{category} は指定済みなので同じ分類の QR- が1つ以上必要です")
+            if all(state_of[item] == "open_question" for item in qr_refs):
+                fail(f"品質区分の網羅.{category} は指定済みですが open_question の品質要求しかありません")
+        elif disposition == "非該当":
+            if qr_refs:
+                fail(f"品質区分の網羅.{category} は非該当なので QR- を持てません: {qr_refs}")
+            if strip_markup(row["理由"]) in ("なし", "—"):
+                fail(f"品質区分の網羅.{category} は非該当なので理由が必要です")
+        else:
+            if not any("-OQ-" in item for item in refs + registry.resolve(row["理由"], f"品質区分の網羅.{category}.理由")):
+                fail(f"品質区分の網羅.{category} は未決なので理由または品質要求IDに決める問い（<接頭辞>-OQ-）が必要です")
+            unresolved_categories.append((category, [item for item in refs + ids_in(row["理由"]) if "-OQ-" in item]))
+    specified = {category_of[item] for item in category_of if state_of[item] != "open_question"}
+    for row in coverage:
+        category = strip_markup(row["区分"])
+        if strip_markup(row["判定"]) != "指定済み" and category in specified:
+            fail(f"品質区分の網羅.{category} は測定可能な品質要求があるので指定済みでなければなりません")
 
+    open_conflicts = {identifier for identifier, state in conflict_state.items() if state == "open"}
+    for row in conflicts:
+        identifier = strip_markup(row["ID"])
+        if identifier == "なし":
+            continue
+        refs = registry.resolve(row["対立するID"], f"{identifier}.対立するID")
+        if len(refs) < 2:
+            fail(f"{identifier} の対立するIDは2つ以上必要です: {row['対立するID']}")
+        registry.resolve(row["内容"], f"{identifier}.内容")
 
-def exact_keys(value: dict[str, Any], expected: set[str], label: str) -> None:
-    actual = set(value)
-    if actual != expected:
-        fail(
-            f"{label} keysが不正です: "
-            f"missing={sorted(expected - actual)}, extra={sorted(actual - expected)}"
-        )
-
-
-def as_dict(value: Any, label: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        fail(f"{label}はobjectでなければなりません")
-    return value
-
-
-def as_list(value: Any, label: str) -> list[Any]:
-    if not isinstance(value, list):
-        fail(f"{label}はarrayでなければなりません")
-    return value
-
-
-def nonempty(value: Any, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        fail(f"{label}は非空文字列でなければなりません")
-    return value
-
-
-def optional_string(value: Any, label: str) -> None:
-    if value is not None and (not isinstance(value, str) or not value.strip()):
-        fail(f"{label}はnullまたは非空文字列でなければなりません")
-
-
-def string_list(value: Any, label: str, *, non_empty: bool = True) -> list[str]:
-    items = as_list(value, label)
-    if non_empty and not items:
-        fail(f"{label}は1件以上必要です")
-    if not all(isinstance(item, str) and item.strip() for item in items):
-        fail(f"{label}は非空文字列のarrayでなければなりません")
-    if len(set(items)) != len(items):
-        fail(f"{label}に重複があります")
-    return items
-
-
-def ensure_refs(
-    value: Any,
-    allowed: set[str],
-    label: str,
-    *,
-    non_empty: bool = True,
-) -> list[str]:
-    refs = string_list(value, label, non_empty=non_empty)
-    missing = sorted(set(refs) - allowed)
+    hypotheses: list[str] = []
+    open_questions: list[str] = []
+    referenced_conflicts: set[str] = set()
+    for row in pending:
+        identifier = strip_markup(row["ID"])
+        if identifier == "なし":
+            continue
+        state = one_state(row["根拠状態"], ("hypothesis", "open_question"), identifier)
+        expected = "-HYP-" if state == "hypothesis" else "-OQ-"
+        if expected not in identifier:
+            fail(f"{identifier} の根拠状態 {state} はIDの種別と一致しません")
+        if not identifier.startswith("QR-"):
+            registry.resolve(identifier, "仮説と未決.ID")
+        if strip_markup(row["検証計画"]) in ("なし", "未決", "—"):
+            fail(f"{identifier} の検証計画が空です")
+        registry.resolve(row["内容"], f"{identifier}.内容")
+        impacts = registry.resolve(row["影響先"], f"{identifier}.影響先")
+        if state == "open_question":
+            referenced_conflicts.update(item for item in impacts if item.startswith("QCON-"))
+        (hypotheses if state == "hypothesis" else open_questions).append(identifier)
+    missing = sorted(open_conflicts - referenced_conflicts)
     if missing:
-        fail(f"{label}に未解決参照があります: {missing}")
-    return refs
+        fail(f"open の矛盾が仮説と未決の open_question 行の影響先から参照されていません: {missing}")
+    for category, cited in unresolved_categories:
+        if not any(item in open_questions for item in cited):
+            fail(f"品質区分の網羅.{category} が引く問い {cited} が仮説と未決の open_question 行にありません")
+
+    trace = single_table(doc, "追跡", ["品質要求ID", "要求ID", "負荷ID", "ADR・図ノードID"])
+    traced: set[str] = set()
+    for row in trace:
+        refs = registry.resolve(row["品質要求ID"], "追跡.品質要求ID")
+        qr_refs = [item for item in refs if item in category_of]
+        if not qr_refs:
+            fail(f"追跡の品質要求IDに QR- がありません: {row['品質要求ID']}")
+        traced.update(qr_refs)
+        registry.resolve(row["要求ID"], f"{qr_refs[0]}.要求ID")
+        registry.resolve(row["負荷ID"], f"{qr_refs[0]}.負荷ID")
+    missing = [identifier for identifier in category_of if identifier not in traced]
+    if missing:
+        fail(f"追跡に現れない品質要求があります: {missing}")
+
+    registry.resolve("\n".join(doc.intro), "冒頭")
+    return {
+        "verified": True,
+        "document_type": "quality-requirements",
+        "status": "unresolved" if open_questions or open_conflicts else "ready",
+        "quality_requirements": list(category_of),
+        "measurable": [identifier for identifier, state in state_of.items() if state != "open_question"],
+        "conflicts": sorted(conflict_state),
+        "open_conflicts": sorted(open_conflicts),
+        "hypotheses": hypotheses,
+        "open_questions": open_questions,
+        "upstream": upstream,
+    }
 
 
-def register(identifier: Any, pattern: str, label: str, seen: dict[str, str]) -> str:
-    value = nonempty(identifier, f"{label}.id")
-    if re.fullmatch(pattern, value) is None:
-        fail(f"{label}.idの形式が不正です: {value}")
-    if value in seen:
-        fail(f"IDが重複しています: {value} ({seen[value]}, {label})")
-    seen[value] = label
-    return value
-
-
-def load(path: Path) -> dict[str, Any]:
-    if path.is_symlink() or not path.is_file():
-        fail(f"artifactはregular fileでなければなりません: {path}")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("command", choices=("check",))
+    parser.add_argument("--upstream", action="append", default=[], help="上流正本（要求発見・利用負荷モデル）の絶対path。複数可")
+    args = parser.parse_args()
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        fail(f"artifactが有効なUTF-8 JSONではありません: {exc}")
-    return as_dict(value, "artifact root")
-
-
-def number(value: Any, label: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        fail(f"{label}は数値でなければなりません")
-    numeric = float(value)
-    if not math.isfinite(numeric) or numeric < 0:
-        fail(f"{label}は0以上の有限数でなければなりません")
-    return numeric
-
-
-def validate_metric(value: Any, label: str) -> None:
-    metric = as_dict(value, label)
-    exact_keys(metric, {"name", "statistic"}, label)
-    nonempty(metric["name"], f"{label}.name")
-    nonempty(metric["statistic"], f"{label}.statistic")
-
-
-def validate_threshold(value: Any, label: str) -> None:
-    threshold = as_dict(value, label)
-    exact_keys(threshold, {"operator", "value", "unit"}, label)
-    if threshold["operator"] not in OPERATORS:
-        fail(f"{label}.operatorが不正です")
-    number(threshold["value"], f"{label}.value")
-    nonempty(threshold["unit"], f"{label}.unit")
-
-
-def validate_payload(payload: dict[str, Any]) -> None:
-    if payload.get("schema_version") != 2:
-        fail("schema_versionは2でなければなりません")
-    exact_keys(payload, TOP_KEYS, "top-level")
-
-    artifact = as_dict(payload["artifact"], "artifact")
-    exact_keys(artifact, {"id", "version", "subject", "state"}, "artifact")
-    artifact_id = nonempty(artifact["id"], "artifact.id")
-    if re.fullmatch(r"QRMDL-[a-z0-9]+(?:-[a-z0-9]+)*", artifact_id) is None:
-        fail("artifact.idの形式が不正です")
-    if type(artifact["version"]) is not int or artifact["version"] < 1:
-        fail("artifact.versionは1以上の整数でなければなりません")
-    nonempty(artifact["subject"], "artifact.subject")
-    if artifact["state"] not in {
-        "ready_for_architecture",
-        "saved_with_open_questions",
-    }:
-        fail("artifact.stateが不正です")
-
-    seen: dict[str, str] = {artifact_id: "artifact"}
-    source_ids: set[str] = set()
-    source_kinds: dict[str, str] = {}
-    input_keys = {"id", "kind", "locator", "version_or_hash", "observed_at"}
-    inputs = as_list(payload["input_artifacts"], "input_artifacts")
-    if not inputs:
-        fail("input_artifactsは1件以上必要です")
-    for index, raw in enumerate(inputs):
-        item = as_dict(raw, f"input_artifacts[{index}]")
-        exact_keys(item, input_keys, f"input_artifacts[{index}]")
-        identifier = register(item["id"], r"SRC-[0-9]{3,}", "input artifact", seen)
-        source_ids.add(identifier)
-        if item["kind"] not in {
-            "requirements",
-            "journey",
-            "domain",
-            "workload",
-            "telemetry",
-            "decision",
-            "other",
-        }:
-            fail(f"{identifier}.kindが不正です")
-        source_kinds[identifier] = item["kind"]
-        for key in ("locator", "version_or_hash", "observed_at"):
-            nonempty(item[key], f"{identifier}.{key}")
-
-    claim_classes: dict[str, str] = {}
-    claim_categories: dict[str, str] = {}
-    claim_keys = {
-        "id",
-        "statement",
-        "classification",
-        "source_artifact_id",
-        "source_ref",
-        "observed_at",
-        "category",
-    }
-    claims = as_list(payload["claims"], "claims")
-    if not claims:
-        fail("claimsは1件以上必要です")
-    for index, raw in enumerate(claims):
-        item = as_dict(raw, f"claims[{index}]")
-        exact_keys(item, claim_keys, f"claims[{index}]")
-        identifier = register(item["id"], r"CLM-[0-9]{3,}", "claim", seen)
-        nonempty(item["statement"], f"{identifier}.statement")
-        if item["classification"] not in CLAIM_CLASSES:
-            fail(f"{identifier}.classificationが不正です")
-        if item["source_artifact_id"] not in source_ids:
-            fail(f"{identifier}.source_artifact_idが未解決です")
-        for key in ("source_ref", "observed_at"):
-            nonempty(item[key], f"{identifier}.{key}")
-        if item["category"] not in CATEGORIES:
-            fail(f"{identifier}.categoryが不正です")
-        claim_classes[identifier] = item["classification"]
-        claim_categories[identifier] = item["category"]
-
-    all_question_ids: set[str] = set()
-    question_ids: set[str] = set()
-    question_values = as_list(payload["open_questions"], "open_questions")
-    question_keys = {"id", "question", "owner", "affected_refs", "blocks", "state", "resolution", "reason"}
-    for index, raw in enumerate(question_values):
-        item = as_dict(raw, f"open_questions[{index}]")
-        exact_keys(item, question_keys, f"open_questions[{index}]")
-        identifier = register(item["id"], r"OQ-QR-[0-9]{3,}", "open question", seen)
-        all_question_ids.add(identifier)
-        nonempty(item["question"], f"{identifier}.question")
-        nonempty(item["owner"], f"{identifier}.owner")
-        string_list(item["affected_refs"], f"{identifier}.affected_refs")
-        string_list(item["blocks"], f"{identifier}.blocks")
-        state = item["state"]
-        if state not in {"open", "resolved", "withdrawn"}:
-            fail(f"{identifier}.stateが不正です")
-        if state == "resolved":
-            nonempty(item["resolution"], f"{identifier}.resolution")
-        elif item["resolution"] is not None:
-            fail(f"{identifier}.resolutionはresolvedの場合だけ設定できます")
-        nonempty(item["reason"], f"{identifier}.reason")
-        if state == "open":
-            question_ids.add(identifier)
-
-    question_review = as_dict(payload["question_review"], "question_review")
-    exact_keys(question_review, {"question_ids", "confirmed_by", "confirmation", "dialogue_complete"}, "question_review")
-    reviewed = string_list(question_review["question_ids"], "question_review.question_ids", non_empty=False)
-    if set(reviewed) != all_question_ids or len(reviewed) != len(all_question_ids):
-        fail("question_review.question_idsが質問一覧全体と一致しません")
-    nonempty(question_review["confirmed_by"], "question_review.confirmed_by")
-    nonempty(question_review["confirmation"], "question_review.confirmation")
-    if question_review["dialogue_complete"] is not True:
-        fail("question_review.dialogue_completeは明示確認後のtrueでなければなりません")
-
-    qr_keys = {
-        "id",
-        "category",
-        "title",
-        "status",
-        "source_claim_ids",
-        "upstream_refs",
-        "workload_link_ids",
-        "observation_point",
-        "metric",
-        "threshold",
-        "time_window",
-        "population",
-        "verification_method",
-        "verification_owner",
-        "confidence",
-        "design_sensitivity",
-        "open_question_ids",
-        "conflict_ids",
-    }
-    qr_values = as_list(payload["quality_requirements"], "quality_requirements")
-    if not qr_values:
-        fail("quality_requirementsは1件以上必要です")
-    qr_ids: set[str] = set()
-    for index, raw in enumerate(qr_values):
-        item = as_dict(raw, f"quality_requirements[{index}]")
-        exact_keys(item, qr_keys, f"quality_requirements[{index}]")
-        qr_ids.add(register(item["id"], r"QR-[0-9]{3,}", "quality requirement", seen))
-
-    link_keys = {
-        "id",
-        "quality_requirement_id",
-        "workload_source_id",
-        "workload_ref",
-        "workload_status",
-        "relation",
-        "rationale",
-        "conflict_ids",
-        "open_question_ids",
-    }
-    link_values = as_list(payload["workload_links"], "workload_links")
-    link_ids: set[str] = set()
-    for index, raw in enumerate(link_values):
-        item = as_dict(raw, f"workload_links[{index}]")
-        exact_keys(item, link_keys, f"workload_links[{index}]")
-        link_ids.add(register(item["id"], r"QWL-[0-9]{3,}", "workload link", seen))
-
-    conflict_keys = {
-        "id",
-        "left_ref",
-        "right_ref",
-        "statement",
-        "status",
-        "resolution",
-        "evidence_claim_ids",
-        "open_question_ids",
-    }
-    conflict_values = as_list(payload["conflicts"], "conflicts")
-    conflict_ids: set[str] = set()
-    for index, raw in enumerate(conflict_values):
-        item = as_dict(raw, f"conflicts[{index}]")
-        exact_keys(item, conflict_keys, f"conflicts[{index}]")
-        conflict_ids.add(register(item["id"], r"QCON-[0-9]{3,}", "conflict", seen))
-
-    qr_categories: dict[str, str] = {}
-    qr_states: dict[str, str] = {}
-    for item in qr_values:
-        identifier = item["id"]
-        if item["category"] not in CATEGORIES:
-            fail(f"{identifier}.categoryが不正です")
-        category = item["category"]
-        qr_categories[identifier] = category
-        if item["status"] not in QR_STATES:
-            fail(f"{identifier}.statusが不正です")
-        status = item["status"]
-        qr_states[identifier] = status
-        nonempty(item["title"], f"{identifier}.title")
-        claims_for_qr = ensure_refs(
-            item["source_claim_ids"],
-            set(claim_classes),
-            f"{identifier}.source_claim_ids",
-        )
-        wrong_claims = [
-            ref for ref in claims_for_qr if claim_categories[ref] != category
-        ]
-        if wrong_claims:
-            fail(f"{identifier}が別categoryのclaimを参照しています: {wrong_claims}")
-        string_list(item["upstream_refs"], f"{identifier}.upstream_refs")
-        ensure_refs(
-            item["workload_link_ids"],
-            link_ids,
-            f"{identifier}.workload_link_ids",
-            non_empty=False,
-        )
-        questions = ensure_refs(
-            item["open_question_ids"],
-            question_ids,
-            f"{identifier}.open_question_ids",
-            non_empty=status == "unresolved",
-        )
-        ensure_refs(
-            item["conflict_ids"],
-            conflict_ids,
-            f"{identifier}.conflict_ids",
-            non_empty=False,
-        )
-        nonempty(item["design_sensitivity"], f"{identifier}.design_sensitivity")
-
-        if status in {"agreed", "hypothesis"}:
-            nonempty(item["observation_point"], f"{identifier}.observation_point")
-            validate_metric(item["metric"], f"{identifier}.metric")
-            validate_threshold(item["threshold"], f"{identifier}.threshold")
-            for key in (
-                "time_window",
-                "population",
-                "verification_method",
-                "verification_owner",
-            ):
-                nonempty(item[key], f"{identifier}.{key}")
-            if item["confidence"] not in CONFIDENCE - {"unknown"}:
-                fail(f"{identifier}.confidenceに確からしさがありません")
-            classes = {claim_classes[ref] for ref in claims_for_qr}
-            if status == "agreed":
-                if "agreed_decision" not in classes or "hypothesis" in classes:
-                    fail(f"{identifier}に合意済み品質閾値の根拠がありません")
-            elif "hypothesis" not in classes:
-                fail(f"{identifier}にhypothesis claimがありません")
-        else:
-            optional_string(item["observation_point"], f"{identifier}.observation_point")
-            if item["metric"] is not None:
-                validate_metric(item["metric"], f"{identifier}.metric")
-            if item["threshold"] is not None:
-                fail(f"{identifier}.unresolvedはthreshold=nullでなければなりません")
-            for key in (
-                "time_window",
-                "population",
-                "verification_method",
-                "verification_owner",
-            ):
-                optional_string(item[key], f"{identifier}.{key}")
-            if item["confidence"] != "unknown" or not questions:
-                fail(f"{identifier}.unresolvedはconfidence=unknownとopen questionが必要です")
-
-    coverage_values = as_list(payload["category_coverage"], "category_coverage")
-    coverage_keys = {
-        "category",
-        "disposition",
-        "rationale",
-        "quality_requirement_ids",
-        "open_question_ids",
-    }
-    coverage_categories: set[str] = set()
-    for index, raw in enumerate(coverage_values):
-        item = as_dict(raw, f"category_coverage[{index}]")
-        exact_keys(item, coverage_keys, f"category_coverage[{index}]")
-        category = item["category"]
-        if category not in CATEGORIES or category in coverage_categories:
-            fail(f"category_coverage[{index}].categoryが不正または重複しています")
-        coverage_categories.add(category)
-        disposition = item["disposition"]
-        if disposition not in {"specified", "unresolved", "not_applicable"}:
-            fail(f"{category}.dispositionが不正です")
-        nonempty(item["rationale"], f"{category}.rationale")
-        refs = ensure_refs(
-            item["quality_requirement_ids"],
-            qr_ids,
-            f"{category}.quality_requirement_ids",
-            non_empty=disposition != "not_applicable",
-        )
-        if any(qr_categories[ref] != category for ref in refs):
-            fail(f"{category}.quality_requirement_idsに別categoryがあります")
-        questions = ensure_refs(
-            item["open_question_ids"],
-            question_ids,
-            f"{category}.open_question_ids",
-            non_empty=disposition == "unresolved",
-        )
-        if disposition == "specified" and any(qr_states[ref] == "unresolved" for ref in refs):
-            fail(f"{category}.specifiedがunresolved QRを含んでいます")
-        if disposition == "unresolved" and not any(
-            qr_states[ref] == "unresolved" for ref in refs
-        ):
-            fail(f"{category}.unresolvedにunresolved QRがありません")
-        if disposition == "not_applicable" and (refs or questions):
-            fail(f"{category}.not_applicableにQRまたはopen questionを持てません")
-    if coverage_categories != CATEGORIES:
-        fail(
-            "category_coverageが10 categoryと一致しません: "
-            f"missing={sorted(CATEGORIES - coverage_categories)}"
-        )
-
-    links_by_qr: dict[str, set[str]] = {identifier: set() for identifier in qr_ids}
-    for item in link_values:
-        identifier = item["id"]
-        qr_id = item["quality_requirement_id"]
-        if qr_id not in qr_ids:
-            fail(f"{identifier}.quality_requirement_idが未解決です")
-        links_by_qr[qr_id].add(identifier)
-        source_id = item["workload_source_id"]
-        if source_id not in source_ids or source_kinds[source_id] != "workload":
-            fail(f"{identifier}.workload_source_idがworkload artifactではありません")
-        nonempty(item["workload_ref"], f"{identifier}.workload_ref")
-        workload_status = item["workload_status"]
-        if workload_status not in {
-            "confirmed",
-            "hypothesis",
-            "unresolved",
-            "not_applicable",
-        }:
-            fail(f"{identifier}.workload_statusが不正です")
-        relation = item["relation"]
-        if relation not in {"supports", "assumption", "conflicts", "blocked_by"}:
-            fail(f"{identifier}.relationが不正です")
-        nonempty(item["rationale"], f"{identifier}.rationale")
-        link_conflicts = ensure_refs(
-            item["conflict_ids"],
-            conflict_ids,
-            f"{identifier}.conflict_ids",
-            non_empty=relation == "conflicts",
-        )
-        link_questions = ensure_refs(
-            item["open_question_ids"],
-            question_ids,
-            f"{identifier}.open_question_ids",
-            non_empty=relation == "blocked_by",
-        )
-        if relation == "supports" and workload_status != "confirmed":
-            fail(f"{identifier}が未確認workloadをsupportsへ昇格しています")
-        if relation == "assumption" and workload_status != "hypothesis":
-            fail(f"{identifier}.assumptionはworkload hypothesisだけを参照できます")
-        if workload_status == "hypothesis" and relation not in {"assumption", "conflicts"}:
-            fail(f"{identifier}がworkload hypothesisの状態を保持していません")
-        if workload_status == "unresolved" and relation not in {"blocked_by", "conflicts"}:
-            fail(f"{identifier}がunresolved workloadを確定扱いしています")
-        if relation != "conflicts" and link_conflicts:
-            fail(f"{identifier}.conflict_idsはrelation=conflictsの場合だけ使用できます")
-        if relation != "blocked_by" and link_questions:
-            fail(f"{identifier}.open_question_idsはrelation=blocked_byの場合だけ使用できます")
-
-    for item in qr_values:
-        expected = links_by_qr[item["id"]]
-        if set(item["workload_link_ids"]) != expected:
-            fail(f"{item['id']}.workload_link_idsが逆参照と一致しません")
-
-    open_conflicts: set[str] = set()
-    conflict_refs = qr_ids | link_ids
-    for item in conflict_values:
-        identifier = item["id"]
-        left = item["left_ref"]
-        right = item["right_ref"]
-        if left not in conflict_refs or right not in conflict_refs or left == right:
-            fail(f"{identifier}.left_ref/right_refが不正です")
-        nonempty(item["statement"], f"{identifier}.statement")
-        if item["status"] not in {"open", "resolved"}:
-            fail(f"{identifier}.statusが不正です")
-        evidence = ensure_refs(
-            item["evidence_claim_ids"],
-            set(claim_classes),
-            f"{identifier}.evidence_claim_ids",
-            non_empty=item["status"] == "resolved",
-        )
-        questions = ensure_refs(
-            item["open_question_ids"],
-            question_ids,
-            f"{identifier}.open_question_ids",
-            non_empty=item["status"] == "open",
-        )
-        if item["status"] == "open":
-            open_conflicts.add(identifier)
-            if item["resolution"] is not None or evidence:
-                fail(f"{identifier}.openはresolution/evidenceを持てません")
-        else:
-            nonempty(item["resolution"], f"{identifier}.resolution")
-            if questions:
-                fail(f"{identifier}.resolvedはopen questionを持てません")
-            if any(claim_classes[ref] == "hypothesis" for ref in evidence):
-                fail(f"{identifier}をhypothesisだけでresolvedにできません")
-
-    for item in qr_values:
-        for conflict_id in item["conflict_ids"]:
-            conflict = next(value for value in conflict_values if value["id"] == conflict_id)
-            if item["id"] not in {conflict["left_ref"], conflict["right_ref"]}:
-                fail(f"{item['id']}.conflict_idsが逆参照と一致しません")
-    for item in link_values:
-        for conflict_id in item["conflict_ids"]:
-            conflict = next(value for value in conflict_values if value["id"] == conflict_id)
-            if item["id"] not in {conflict["left_ref"], conflict["right_ref"]}:
-                fail(f"{item['id']}.conflict_idsが逆参照と一致しません")
-
-    qr_by_id = {item["id"]: item for item in qr_values}
-    link_by_id = {item["id"]: item for item in link_values}
-    for conflict in conflict_values:
-        for ref in (conflict["left_ref"], conflict["right_ref"]):
-            target = qr_by_id.get(ref) or link_by_id.get(ref)
-            if conflict["id"] not in target["conflict_ids"]:
-                fail(f"{conflict['id']}が{ref}.conflict_idsから逆参照されていません")
-
-    all_refs = qr_ids | link_ids | conflict_ids
-    for item in question_values:
-        ensure_refs(
-            item["affected_refs"],
-            all_refs,
-            f"{item['id']}.affected_refs",
-        )
-
-    handoff = as_dict(payload["handoff"], "handoff")
-    exact_keys(
-        handoff,
-        {
-            "ready",
-            "blocking_question_ids",
-            "quality_requirement_ids",
-            "workload_link_ids",
-            "conflict_ids",
-        },
-        "handoff",
-    )
-    if type(handoff["ready"]) is not bool:
-        fail("handoff.readyはbooleanでなければなりません")
-    ready = handoff["ready"]
-    blocking = ensure_refs(
-        handoff["blocking_question_ids"],
-        question_ids,
-        "handoff.blocking_question_ids",
-        non_empty=not ready,
-    )
-    if set(blocking) != question_ids:
-        fail("handoff.blocking_question_idsがopen question集合と一致しません")
-    if "workload" not in set(source_kinds.values()) and not question_ids:
-        fail("workload modelがない場合は未決として保存しなければなりません")
-    expected_ready = not question_ids and not open_conflicts
-    if ready != expected_ready:
-        fail("handoff.readyがopen question/conflict状態と一致しません")
-    expected_state = "ready_for_architecture" if ready else "saved_with_open_questions"
-    if artifact["state"] != expected_state:
-        fail("artifact.stateとhandoff.readyが一致しません")
-    expected_qrs = {identifier for identifier, state in qr_states.items() if state != "unresolved"}
-    if set(ensure_refs(
-        handoff["quality_requirement_ids"],
-        qr_ids,
-        "handoff.quality_requirement_ids",
-        non_empty=False,
-    )) != expected_qrs:
-        fail("handoff.quality_requirement_idsが測定可能QR集合と一致しません")
-    if set(ensure_refs(
-        handoff["workload_link_ids"],
-        link_ids,
-        "handoff.workload_link_ids",
-        non_empty=False,
-    )) != link_ids:
-        fail("handoff.workload_link_idsがworkload link集合と一致しません")
-    if set(ensure_refs(
-        handoff["conflict_ids"],
-        conflict_ids,
-        "handoff.conflict_ids",
-        non_empty=False,
-    )) != conflict_ids:
-        fail("handoff.conflict_idsがconflict集合と一致しません")
-
-    change_log = as_list(payload["change_log"], "change_log")
-    if not change_log:
-        fail("change_logは初版を含め1件以上必要です")
-    versions: list[int] = []
-    change_keys = {"version", "changed_input_ids", "invalidated_refs", "summary"}
-    for index, raw in enumerate(change_log):
-        item = as_dict(raw, f"change_log[{index}]")
-        exact_keys(item, change_keys, f"change_log[{index}]")
-        version = item["version"]
-        if type(version) is not int or version < 1:
-            fail(f"change_log[{index}].versionが不正です")
-        versions.append(version)
-        ensure_refs(
-            item["changed_input_ids"],
-            source_ids,
-            f"change_log[{index}].changed_input_ids",
-        )
-        string_list(
-            item["invalidated_refs"],
-            f"change_log[{index}].invalidated_refs",
-            non_empty=False,
-        )
-        nonempty(item["summary"], f"change_log[{index}].summary")
-    if versions != list(range(1, artifact["version"] + 1)):
-        fail("change_log.versionは1からartifact.versionまで連続しなければなりません")
-
-
-def check_file(path: Path) -> dict[str, Any]:
-    payload = load(path)
-    validate_payload(payload)
-    return payload
-
-
-def safe_repo(raw: str) -> Path:
-    repo = Path(raw)
-    if not repo.is_absolute():
-        fail("--repoは絶対pathでなければなりません")
-    if repo.is_symlink() or not repo.is_dir():
-        fail("--repoは実在するregular directoryでなければなりません")
-    return repo.resolve(strict=True)
-
-
-def write_artifact(
-    repo: Path,
-    slug: str,
-    source: Path,
-    expected_version: int | None,
-) -> Path:
-    if SLUG.fullmatch(slug) is None:
-        fail("--slugはlower-case hyphen-caseでなければなりません")
-    payload = check_file(source)
-    target = repo / "system-design" / "quality-requirements" / f"{slug}.quality.json"
-    current_path = repo
-    for part in target.relative_to(repo).parts:
-        current_path = current_path / part
-        if current_path.exists() and current_path.is_symlink():
-            fail(f"保存先のpathにsymlinkがあります: {current_path}")
-    if target.exists():
-        if expected_version is None:
-            fail("既存正本を更新するには--expected-versionが必要です")
-        current = check_file(target)
-        version = current["artifact"]["version"]
-        if version != expected_version:
-            fail(
-                "既存正本versionが期待値と一致しません: "
-                f"expected={expected_version}, actual={version}"
-            )
-        if payload["artifact"]["id"] != current["artifact"]["id"]:
-            fail("更新でartifact.idを変更できません")
-        if payload["artifact"]["version"] != version + 1:
-            fail("更新後artifact.versionは現在version+1でなければなりません")
-    elif expected_version is not None:
-        fail("初回保存に--expected-versionを指定できません")
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    canonical = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{slug}.",
-        suffix=".tmp",
-        dir=target.parent,
-        text=True,
-    )
-    temporary_path = Path(temporary)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(canonical)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(
-            temporary_path,
-            stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH,
-        )
-        os.replace(temporary_path, target)
-    finally:
-        if temporary_path.exists():
-            temporary_path.unlink()
-    return target.resolve(strict=True)
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    check = subparsers.add_parser("check")
-    check.add_argument("--file", required=True)
-    write = subparsers.add_parser("write")
-    write.add_argument("--repo", required=True)
-    write.add_argument("--slug", required=True)
-    write.add_argument("--file", required=True)
-    write.add_argument("--expected-version", type=int)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    try:
-        source = Path(args.file)
-        if not source.is_absolute():
-            fail("--fileは絶対pathでなければなりません")
-        if args.command == "check":
-            check_file(source)
-            print(source.resolve(strict=True))
-            return
-        result = write_artifact(
-            safe_repo(args.repo),
-            args.slug,
-            source,
-            args.expected_version,
-        )
-        print(result)
-    except (ContractError, OSError, UnicodeError) as exc:
-        print(f"FAIL: {exc}", file=os.sys.stderr)
-        raise SystemExit(2)
+        result = check(read_stdin(), args.upstream)
+    except ContractError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

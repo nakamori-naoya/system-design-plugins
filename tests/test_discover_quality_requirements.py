@@ -1,373 +1,84 @@
 #!/usr/bin/env python3
-"""Regression tests for discover-quality-requirements behavior."""
+"""discover-quality-requirements の検査script（quality.py）の正例・反例・境界例。
+
+正本: write-docの quality-requirements template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文と、--upstream の要求発見・利用負荷モデル正本（fixture）。
+"""
 
 from __future__ import annotations
 
-import copy
-import json
-import shutil
-import subprocess
-import tempfile
 import unittest
-from pathlib import Path
+
+from canon_case import QUALITY, REQUIREMENTS, SKILLS, WORKLOAD, CanonCase
 
 
-ROOT = Path(__file__).resolve().parents[1]
-SKILL_ROOT = ROOT / "plugins/system-design/skills/discover-quality-requirements"
-SCRIPT = SKILL_ROOT / "scripts/quality.py"
-FIXTURES = ROOT / "tests/fixtures/discover-quality-requirements"
-CATEGORIES = {
-    "latency",
-    "throughput",
-    "availability",
-    "consistency",
-    "durability",
-    "recovery",
-    "security",
-    "privacy",
-    "operability",
-    "cost",
-}
+class QualityContractTest(CanonCase):
+    script = SKILLS / "discover-quality-requirements/scripts/quality.py"
+    fixture = QUALITY
+    arguments = ["--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD)]
 
+    def test_success_fixture_passes(self) -> None:
+        payload = self.assert_pass(self.body())
+        self.assertEqual(payload["document_type"], "quality-requirements")
+        self.assertEqual(payload["status"], "unresolved")
+        self.assertEqual(payload["quality_requirements"], ["QR-001", "QR-002", "QR-003"])
+        self.assertEqual(payload["measurable"], ["QR-001", "QR-002"])
+        self.assertEqual(payload["open_conflicts"], ["QCON-001"])
 
-class QualityContractTest(unittest.TestCase):
-    def call(self, script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["python3", str(script), *[str(argument) for argument in arguments]],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+    def test_upstream_required(self) -> None:
+        self.arguments = []
+        self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")
 
-    def load(self, name: str) -> dict:
-        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
-        if name == "success.json":
-            value["schema_version"] = 2
-        if value.get("schema_version") == 2:
-            for item in value["open_questions"]:
-                item.update(state="open", resolution=None, reason="未決として一覧確認した")
-            value["question_review"] = {
-                "question_ids": [item["id"] for item in value["open_questions"]],
-                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
-                "dialogue_complete": True,
-            }
-        return value
+    def test_threshold_notation(self) -> None:
+        self.assert_fail(self.mutate("| >= 99.9 % |", "| 99.9% |"), "QR-001 の閾値は `<演算子> <数値> <単位>`")
+        self.assert_fail(self.mutate("| >= 99.9 % |", "| 高い |"), "QR-001 の閾値は")
+        self.assert_fail(self.mutate("| 未決 | 確定日の集中10分間 | 全確認要求 | 集中倍率が決まってから負荷試験で確かめる | open_question |", "| >= 100 件/秒 | 確定日の集中10分間 | 全確認要求 | 集中倍率が決まってから負荷試験で確かめる | open_question |"), "open_question なので閾値は 未決")
+        self.assert_fail(self.mutate("| <= 800 ミリ秒 | ピーク10分間 | 全確認要求 | `WL-001` の80件/秒を10分与える負荷試験 | hypothesis |", "| 未決 | ピーク10分間 | 全確認要求 | `WL-001` の80件/秒を10分与える負荷試験 | hypothesis |"), "QR-002 の閾値は")
 
-    def test_question_review_must_cover_the_whole_list(self) -> None:
-        artifact = self.load("success.json")
-        artifact["open_questions"] = [{"id": "OQ-QR-999", "question": "未決", "owner": "利用者", "affected_refs": ["QR-001"], "blocks": ["architecture"], "state": "open", "resolution": None, "reason": "回答待ち"}]
-        artifact["handoff"]["ready"] = False
-        artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-999"]
-        artifact["artifact"]["state"] = "saved_with_open_questions"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("質問一覧全体", result.stderr)
+    def test_category_vocabulary(self) -> None:
+        self.assert_fail(self.mutate("| QR-002 | 応答時間 |", "| QR-002 | レイテンシ |"), "QR-002.分類 は")
+        self.assert_fail(self.mutate("| QR-001 | 可用性 | 確認経路の外形監視 | 確認要求の成功率 | >= 99.9 % | 確定日の集中10分間 | 全確認要求 | `WL-001` のピークを与える負荷試験と外形監視の集計 | agreed_decision |", "| QR-001 | 可用性 | 確認経路の外形監視 | 確認要求の成功率 | >= 99.9 % | 確定日の集中10分間 | 全確認要求 | `WL-001` のピークを与える負荷試験と外形監視の集計 | fact |"), "QR-001.根拠状態 の根拠状態は")
 
-    def write(self, path: Path, value: dict) -> None:
-        path.write_text(
-            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    def test_coverage_needs_ten_categories(self) -> None:
+        self.assert_fail(self.mutate("| 費用 | 未決 | 費用上限は `WL-OQ-001` が決まるまで置かない | なし |\n", ""), "10区分を各1行")
+        self.assert_fail(self.mutate("| 可用性 | 指定済み | 集中時間帯に確認できることが業務上の失敗を防ぐ | QR-001 |", "| 可用性 | 指定済み | 集中時間帯に確認できることが業務上の失敗を防ぐ | QR-002 |"), "別の分類の品質要求")
+        self.assert_fail(self.mutate("| 可用性 | 指定済み | 集中時間帯に確認できることが業務上の失敗を防ぐ | QR-001 |", "| 可用性 | 未決 | 集中時間帯に確認できるかは `QR-OQ-001` で決める | QR-001 |"), "測定可能な品質要求があるので指定済み")
+        self.assert_fail(self.mutate("| 整合性 | 非該当 | 確認は確定済み結果の読み取りだけで、書き込みの競合が無い | なし |", "| 整合性 | 非該当 | 確認は確定済み結果の読み取りだけで、書き込みの競合が無い | QR-001 |"), "非該当なので QR- を持てません")
+        self.assert_fail(self.mutate("| 運用性 | 未決 | 少人数運用で扱える障害対応の範囲は `QR-OQ-002` で決める | なし |", "| 運用性 | 未決 | 少人数運用で扱える障害対応の範囲は構成設計で決める | なし |"), "未決なので理由または品質要求IDに決める問い")
+        self.assert_fail(self.mutate("| QR-OQ-002 | open_question | 少人数運用で扱える障害対応の範囲 | 運用責任者が構成設計の前に決める | QR-001 |\n", ""), "参照が未解決です: QR-OQ-002")
+        self.assert_fail(self.mutate("| WL-OQ-001 | open_question | 確定日の集中倍率は上流で未決のため継続する | 直近2四半期の確認記録を取得する | QCON-001、QR-003 |\n", ""), "引く問い ['WL-OQ-001'] が仮説と未決の open_question 行にありません")
 
-    def check_temporary(self, artifact: dict) -> subprocess.CompletedProcess[str]:
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        path = Path(temporary.name) / "artifact.json"
-        self.write(path, artifact)
-        return self.call(SCRIPT, "check", "--file", path.resolve())
+    def test_open_conflict_needs_resolving_question(self) -> None:
+        self.assert_fail(self.mutate("| QCON-001、QR-001 |", "| QR-001 |").replace("| QCON-001、QR-003 |", "| QR-003 |"), "open の矛盾が仮説と未決の open_question 行の影響先から参照されていません: ['QCON-001']")
+        self.assert_fail(self.mutate("| QCON-001 | QR-001、WL-OQ-001 |", "| QCON-001 | QR-001 |"), "対立するIDは2つ以上")
+        self.assert_fail(self.mutate("| 事業責任者と運用責任者 | open |", "| 事業責任者と運用責任者 | pending |"), "QCON-001.状態 は")
 
-    def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        result = self.check_temporary(self.load("success.json"))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stderr, "")
+    def test_pending_rows(self) -> None:
+        self.assert_fail(self.mutate("| QR-HYP-001 | hypothesis |", "| QR-HYP-001 | open_question |"), "IDの種別と一致しません")
+        self.assert_fail(self.mutate("| REQ-OQ-002 | open_question | 結果の保持年限は上流で未決のため継続する |", "| REQ-OQ-009 | open_question | 結果の保持年限は上流で未決のため継続する |"), "上流参照が未解決です: REQ-OQ-009")
 
-    def test_preserved_schema_one_fixture_is_rejected(self) -> None:
-        path = (FIXTURES / "success.json").resolve()
-        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema_version"], 1)
-        result = self.call(SCRIPT, "check", "--file", path)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("schema_versionは2", result.stderr)
+    def test_trace_covers_all_quality_requirements(self) -> None:
+        self.assert_fail(self.mutate("| QR-003 | DRV-001 | WL-001、WL-OQ-001 | 未作成 |\n", ""), "追跡に現れない品質要求があります: ['QR-003']")
+        payload = self.assert_pass(self.mutate("| QR-001 | REQ-001、DRV-001 | WL-001 | 未作成 |", "| QR-001 | REQ-001、DRV-001 | WL-001 | ADR-001、NODE-API |"))
+        self.assertEqual(payload["status"], "unresolved")
 
-    def test_success_covers_categories_measurement_and_hypotheses(self) -> None:
-        artifact = self.load("success.json")
-        self.assertEqual(
-            {item["category"] for item in artifact["category_coverage"]},
-            CATEGORIES,
-        )
-        by_id = {item["id"]: item for item in artifact["quality_requirements"]}
-        for item in by_id.values():
-            self.assertIsNotNone(item["observation_point"])
-            self.assertIsNotNone(item["metric"])
-            self.assertIsNotNone(item["threshold"])
-            self.assertIsNotNone(item["time_window"])
-            self.assertIsNotNone(item["population"])
-            self.assertIsNotNone(item["verification_method"])
-        self.assertEqual(by_id["QR-002"]["status"], "hypothesis")
-        self.assertEqual(by_id["QR-006"]["status"], "hypothesis")
-        links = {item["id"]: item for item in artifact["workload_links"]}
-        self.assertEqual(links["QWL-001"]["workload_status"], "hypothesis")
-        self.assertEqual(links["QWL-001"]["relation"], "assumption")
-        self.assertEqual(artifact["conflicts"][0]["status"], "resolved")
-
-    def test_fixture_matrix_has_success_out_of_scope_and_boundary(self) -> None:
-        scenarios = self.load("cases.json")["scenarios"]
-        self.assertEqual(
-            {scenario["kind"] for scenario in scenarios},
-            {"success", "out_of_scope", "boundary"},
-        )
-        out_of_scope = next(
-            scenario for scenario in scenarios if scenario["kind"] == "out_of_scope"
-        )
-        self.assertEqual(out_of_scope["expected"]["decision"], "stop_and_route")
-        vague = next(
-            scenario
-            for scenario in scenarios
-            if scenario["id"] == "quality-vague-boundary"
-        )
-        self.assertEqual(vague["expected"]["changed_status"], "unresolved")
-        self.assertIsNone(vague["expected"]["changed_threshold"])
-
-    def test_vague_high_availability_is_valid_only_as_unresolved(self) -> None:
-        artifact = self.load("success.json")
-        availability = next(
-            item for item in artifact["quality_requirements"] if item["id"] == "QR-003"
-        )
-        availability.update(
-            {
-                "title": "高可用",
-                "status": "unresolved",
-                "observation_point": None,
-                "metric": None,
-                "threshold": None,
-                "time_window": None,
-                "population": None,
-                "verification_method": None,
-                "verification_owner": None,
-                "confidence": "unknown",
-                "open_question_ids": ["OQ-QR-001"],
-            }
-        )
-        coverage = next(
-            item
-            for item in artifact["category_coverage"]
-            if item["category"] == "availability"
-        )
-        coverage["disposition"] = "unresolved"
-        coverage["open_question_ids"] = ["OQ-QR-001"]
-        artifact["open_questions"] = [
-            {
-                "id": "OQ-QR-001",
-                "question": "高可用の観測点、metric、閾値、時間窓、母集団は何か",
-                "owner": "service owner",
-                "affected_refs": ["QR-003"],
-                "blocks": ["architecture"],
-                "state": "open",
-                "resolution": None,
-                "reason": "回答待ち",
-            }
-        ]
-        artifact["question_review"]["question_ids"] = ["OQ-QR-001"]
-        artifact["artifact"]["state"] = "saved_with_open_questions"
-        artifact["handoff"]["ready"] = False
-        artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-001"]
-        artifact["handoff"]["quality_requirement_ids"].remove("QR-003")
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-        invalid = copy.deepcopy(artifact)
-        invalid_availability = next(
-            item for item in invalid["quality_requirements"] if item["id"] == "QR-003"
-        )
-        invalid_availability["status"] = "agreed"
-        result = self.check_temporary(invalid)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("observation_point", result.stderr)
-
-    def test_missing_measurement_field_cannot_remain_agreed(self) -> None:
-        changes = (
-            ("observation_point", None, "observation_point"),
-            ("metric", None, "metric"),
-            ("threshold", None, "threshold"),
-            ("time_window", None, "time_window"),
-            ("population", None, "population"),
-            ("verification_method", None, "verification_method"),
-        )
-        for field, value, message in changes:
-            with self.subTest(field=field):
-                artifact = self.load("success.json")
-                latency = artifact["quality_requirements"][0]
-                latency[field] = value
-                result = self.check_temporary(artifact)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn(message, result.stderr)
-
-    def test_unagreed_numeric_threshold_cannot_be_promoted(self) -> None:
-        artifact = self.load("success.json")
-        throughput = next(
-            item for item in artifact["quality_requirements"] if item["id"] == "QR-002"
-        )
-        throughput["status"] = "agreed"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("合意済み品質閾値の根拠", result.stderr)
-
-    def test_workload_hypothesis_cannot_be_promoted_to_support(self) -> None:
-        artifact = self.load("success.json")
-        link = next(item for item in artifact["workload_links"] if item["id"] == "QWL-001")
-        link["relation"] = "supports"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("未確認workloadをsupportsへ昇格", result.stderr)
-
-    def test_missing_workload_model_cannot_be_ready(self) -> None:
-        artifact = self.load("success.json")
-        artifact["input_artifacts"] = [
-            item for item in artifact["input_artifacts"] if item["kind"] != "workload"
-        ]
-        workload_claim = next(
-            item for item in artifact["claims"] if item["source_artifact_id"] == "SRC-004"
-        )
-        workload_claim["source_artifact_id"] = "SRC-005"
-        artifact["workload_links"] = []
-        artifact["conflicts"] = []
-        for quality in artifact["quality_requirements"]:
-            quality["workload_link_ids"] = []
-            quality["conflict_ids"] = []
-        artifact["handoff"]["workload_link_ids"] = []
-        artifact["handoff"]["conflict_ids"] = []
-        artifact["change_log"][0]["changed_input_ids"].remove("SRC-004")
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("workload modelがない場合は未決", result.stderr)
-
-    def test_conflicting_workload_requires_traceable_conflict(self) -> None:
-        artifact = self.load("success.json")
-        link = next(item for item in artifact["workload_links"] if item["id"] == "QWL-004")
-        link["conflict_ids"] = []
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("conflict_ids", result.stderr)
-
-        artifact = self.load("success.json")
-        quality = next(
-            item for item in artifact["quality_requirements"] if item["id"] == "QR-006"
-        )
-        quality["conflict_ids"] = []
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("逆参照", result.stderr)
-
-    def test_open_conflict_forces_saved_not_ready_state(self) -> None:
-        artifact = self.load("success.json")
-        conflict = artifact["conflicts"][0]
-        conflict.update(
-            {
-                "status": "open",
-                "resolution": None,
-                "evidence_claim_ids": [],
-                "open_question_ids": ["OQ-QR-001"],
-            }
-        )
-        artifact["open_questions"] = [
-            {
-                "id": "OQ-QR-001",
-                "question": "launch peak時の月額費用を再現できるか",
-                "owner": "product finance owner",
-                "affected_refs": ["QR-006", "QWL-004", "QCON-001"],
-                "blocks": ["architecture"],
-                "state": "open",
-                "resolution": None,
-                "reason": "回答待ち",
-            }
-        ]
-        artifact["question_review"]["question_ids"] = ["OQ-QR-001"]
-        artifact["artifact"]["state"] = "saved_with_open_questions"
-        artifact["handoff"]["ready"] = False
-        artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-001"]
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-        invalid = copy.deepcopy(artifact)
-        invalid["artifact"]["state"] = "ready_for_architecture"
-        invalid["handoff"]["ready"] = True
-        invalid["handoff"]["blocking_question_ids"] = []
-        result = self.check_temporary(invalid)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("blocking_question_ids", result.stderr)
-
-    def test_resolved_conflict_cannot_rely_on_hypothesis_only(self) -> None:
-        artifact = self.load("success.json")
-        claim = next(item for item in artifact["claims"] if item["id"] == "CLM-007")
-        claim["classification"] = "hypothesis"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("hypothesisだけでresolved", result.stderr)
-
-    def test_cloud_product_field_is_rejected(self) -> None:
-        artifact = self.load("success.json")
-        artifact["quality_requirements"][0]["cloud_service"] = "managed product"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("keysが不正", result.stderr)
-
-    def test_write_refuses_implicit_overwrite_and_accepts_next_version(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            repo = base / "repository"
-            repo.mkdir()
-            source = base / "source.json"
-            self.write(source, self.load("success.json"))
-            first = self.call(
-                SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
-            )
-            self.assertEqual(first.returncode, 0, first.stderr)
-            self.assertEqual(first.stderr, "")
-
-            duplicate = self.call(
-                SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
-            )
-            self.assertEqual(duplicate.returncode, 2)
-            self.assertIn("--expected-version", duplicate.stderr)
-
-            update = self.load("success.json")
-            update["artifact"]["version"] = 2
-            update["change_log"].append(
-                {
-                    "version": 2,
-                    "changed_input_ids": ["SRC-004"],
-                    "invalidated_refs": ["QR-002", "QWL-002"],
-                    "summary": "launch peak hypothesis source updated",
-                }
-            )
-            update_path = base / "update.json"
-            self.write(update_path, update)
-            replaced = self.call(
-                SCRIPT,
-                "write",
-                "--repo",
-                repo.resolve(),
-                "--slug",
-                "status",
-                "--file",
-                update_path.resolve(),
-                "--expected-version",
-                "1",
-            )
-            self.assertEqual(replaced.returncode, 0, replaced.stderr)
-            target = repo / "system-design/quality-requirements/status.quality.json"
-            self.assertEqual(json.loads(target.read_text())["artifact"]["version"], 2)
-
-    def test_package_copy_has_no_source_checkout_dependency(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied = base / "system-design"
-            shutil.copytree(ROOT / "plugins/system-design", copied)
-            artifact = base / "quality.json"
-            self.write(artifact, self.load("success.json"))
-            copied_script = copied / "skills/discover-quality-requirements/scripts/quality.py"
-            result = self.call(copied_script, "check", "--file", artifact.resolve())
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stderr, "")
+    def test_status_ready_when_nothing_open(self) -> None:
+        body = self.body()
+        body = body.replace("| QR-003 | 処理量 | 確認経路の入口 | 受理できる確認要求数 | 未決 | 確定日の集中10分間 | 全確認要求 | 集中倍率が決まってから負荷試験で確かめる | open_question |\n", "")
+        body = body.replace("| 処理量 | 未決 | 最大負荷は `WL-OQ-001` の集中倍率が決まるまで閾値を置かない | QR-003 |", "| 処理量 | 非該当 | 確認経路の処理量は可用性の成功率で測る | なし |")
+        body = body.replace("| 耐久性 | 未決 | 結果の保持年限は `REQ-OQ-002` が決まるまで閾値を置かない | なし |", "| 耐久性 | 非該当 | 結果の正本は審査システムが持つ | なし |")
+        body = body.replace("| 復旧性 | 未決 | 復旧目標は `QR-OQ-001` で事業責任者が判断する | なし |", "| 復旧性 | 非該当 | 復旧は審査システムの手順に従う | なし |")
+        body = body.replace("| 運用性 | 未決 | 少人数運用で扱える障害対応の範囲は `QR-OQ-002` で決める | なし |", "| 運用性 | 非該当 | 運用は組織の共通手順に従う | なし |")
+        body = body.replace("| 費用 | 未決 | 費用上限は `WL-OQ-001` が決まるまで置かない | なし |", "| 費用 | 非該当 | 費用上限は制約として扱う | なし |")
+        body = body.replace("| QCON-001 | QR-001、WL-OQ-001 | `QR-001` は集中10分間の成功率を求める一方、集中倍率が分からず必要容量を比較できない | 事業責任者と運用責任者 | open |", "| なし | なし | なし | なし | なし |")
+        head, rest = body.split("## 仮説と未決\n", 1)
+        tail = rest.split("## 追跡\n", 1)[1]
+        body = head + "## 仮説と未決\n\n| ID | 根拠状態 | 内容 | 検証計画 | 影響先 |\n|---|---|---|---|---|\n| QR-HYP-001 | hypothesis | 確認の95パーセンタイル800ミリ秒なら電話への回帰を抑えられる | 申請者20人の操作と問い合わせを観測する | QR-002 |\n\n## 追跡\n" + tail
+        body = body.replace("| QR-003 | DRV-001 | WL-001、WL-OQ-001 | 未作成 |\n", "")
+        body = body.replace("確定日の集中倍率（`WL-OQ-001`）と確認経路（`REQ-OQ-001`）は未決なので、負荷試験は始められるが、正式なSLOは確定しない。", "")
+        payload = self.assert_pass(body)
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["conflicts"], [])
 
 
 if __name__ == "__main__":
