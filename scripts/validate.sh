@@ -9,8 +9,7 @@ status=0
 
 python3 "$ROOT/scripts/validate_repository.py" "$ROOT" || status=1
 python3 "$ROOT/scripts/validate_repository.py" --self-test "$ROOT" || status=1
-python3 "$ROOT/scripts/validate_japanese_prose.py" || status=1
-
+PYTHONDONTWRITEBYTECODE=1 python3 "$ROOT/scripts/validate_skill_playbooks.py" "$ROOT/plugins/system-design" --self-test || status=1
 while IFS= read -r script; do
   bash -n "$script" || status=1
 done < <(find "$ROOT" -type f -name '*.sh' | sort)

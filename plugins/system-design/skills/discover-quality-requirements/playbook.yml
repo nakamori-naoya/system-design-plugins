@@ -1,0 +1,53 @@
+version: 2
+name: discover-quality-requirements
+description: 測定可能な品質要求のJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
+inputs: [request, requirements_baseline, workload_model, journey_or_domain_artifacts, document_destination]
+instructions:
+  execution:
+    directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+steps:
+  - id: fix-upstream-and-claims
+    agent_work: invoking_agent
+    purpose: "上流成果物と品質根拠主張を固定する"
+  - id: classify-quality-categories
+    agent_work: invoking_agent
+    purpose: "品質区分を一件ずつ判定する"
+  - id: make-conditions-observable
+    agent_work: invoking_agent
+    purpose: "測定不能表現を観測可能な条件へ分解する"
+  - id: preserve-number-agreement
+    agent_work: invoking_agent
+    purpose: "数値の合意状態を保つ"
+  - id: record-workload-links-and-conflicts
+    agent_work: invoking_agent
+    purpose: "利用・負荷との対応と矛盾を記録する"
+  - id: record-design-sensitivity
+    agent_work: invoking_agent
+    purpose: "後続設計へ渡す感度を記録する"
+  - id: confirm-question-inventory
+    agent_work: invoking_agent
+    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    provides: [question_review]
+  - id: validate-and-save-canonical
+    agent_work: invoking_agent
+    purpose: "scripts/quality.pyでJSON正本を検査して保存する"
+    needs: [question_review]
+    provides: [quality_artifact_path]
+  - id: compose-document-text
+    agent_work: invoking_agent
+    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を組み立てる"
+    needs: [quality_artifact_path]
+    provides: [quality_document_text]
+  - id: save-markdown-canonical
+    playbook: write-doc
+    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してquality-requirements型の資料を1本保存する"
+    input:
+      document_type: quality-requirements
+    needs: [quality_document_text, document_destination]
+    provides: [quality_document_path]
+  - id: read-back-document
+    agent_work: invoking_agent
+    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、測定条件、未決、handoffが欠落・昇格していないことを確かめる"
+    needs: [quality_artifact_path, quality_document_path]

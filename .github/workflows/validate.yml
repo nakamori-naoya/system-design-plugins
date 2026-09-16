@@ -15,9 +15,29 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # 公開playbook write-doc への依存を実配布物に対して解決できるよう、依存 repository を
+      # 兄弟 checkout として置く。自 repo は <workspace>/<自分の名前>、依存は <workspace>/<repo名>。
+      # 兄弟は検証済みの main を取得し、PR 由来の ref を依存 checkout へ渡さない。
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: ${{ github.event.repository.name }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ github.repository_owner }}/write-doc-plugins
+          ref: main
+          path: write-doc-plugins
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.24.x'
+      - name: Install CLI requirements
+        shell: bash
+        run: |
+          go install github.com/mikefarah/yq/v4@v4.44.3
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Validate repository
+        shell: bash
+        working-directory: ${{ github.event.repository.name }}
         run: bash scripts/validate.sh

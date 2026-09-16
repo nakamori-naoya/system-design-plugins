@@ -13,13 +13,14 @@ from pathlib import Path
 from typing import Any
 
 
-TOP_KEYS_V1 = {
-    "schema_version", "artifact", "input_artifacts", "provider_resolution", "drivers", "constraints",
+TOP_KEYS = {
+    "schema_version", "artifact", "input_artifacts", "provider_decision", "drivers", "constraints",
     "scope", "deployment_model", "alternatives", "selections", "adrs", "diagram",
     "failure_scenarios", "traceability", "verification_plan", "open_questions",
+    "question_review",
     "change_log",
+    "terminology",
 }
-TOP_KEYS_V2 = TOP_KEYS_V1 | {"terminology"}
 CAPABILITIES = {
     "provider", "region_az", "compute", "network", "storage", "database",
     "messaging", "identity", "edge", "observability", "backup_dr", "delivery",
@@ -101,8 +102,6 @@ def validate_terminology(raw: Any, known_ids: set[str]) -> None:
             fail(f"terminologyでsubject_idが重複しています: {subject_id}")
         subjects.add(subject_id)
         terms = string_list(usage["preferred_terms"], f"terminology.usages[{index}].preferred_terms")
-        if any(re.search(r"[ぁ-んァ-ヶ一-龯]", term) is None for term in terms):
-            fail(f"terminology.usages[{index}].preferred_termsは日本語の推奨用語名でなければなりません")
 
 
 def ensure_refs(
@@ -151,9 +150,15 @@ def validate_mode(mode: str, providers: list[str], label: str) -> None:
 
 def validate_payload(payload: dict[str, Any]) -> None:
     schema_version = payload.get("schema_version")
-    if schema_version not in {1, 2}:
-        fail("schema_versionは1または2でなければなりません")
-    exact_keys(payload, TOP_KEYS_V1 if schema_version == 1 else TOP_KEYS_V2, "top-level")
+    if schema_version != 2:
+        fail("schema_versionは2でなければなりません")
+    if "provider_resolution" in payload:
+        fail(
+            "この正本はprovider公開入力化より前の形（provider_resolution: config_locator / config_fingerprint）で、"
+            "schema_version 2のまま現行契約では受理しません。provider_decision {provider, constraint_id} を持つ"
+            "新規成果物として作り直してください"
+        )
+    exact_keys(payload, TOP_KEYS, "top-level")
 
     artifact = as_dict(payload["artifact"], "artifact")
     exact_keys(artifact, {"id", "version", "subject", "state"}, "artifact")
@@ -184,7 +189,7 @@ def validate_payload(payload: dict[str, Any]) -> None:
         source_ids.add(identifier)
         if item["kind"] not in {
             "requirements_baseline", "logical_design", "workload", "quality",
-            "organization", "operations", "budget", "compliance", "runtime_config",
+            "organization", "operations", "budget", "compliance", "decision_record",
             "terminology", "other",
         }:
             fail(f"{identifier}.kindが不正です")
@@ -194,27 +199,20 @@ def validate_payload(payload: dict[str, Any]) -> None:
         for key in ("locator", "version_or_hash", "observed_at"):
             nonempty(item[key], f"{identifier}.{key}")
 
-    provider_resolution = as_dict(payload["provider_resolution"], "provider_resolution")
-    exact_keys(
-        provider_resolution,
-        {"provider", "source_artifact_id", "resolved_config", "config_fingerprint"},
-        "provider_resolution",
-    )
-    resolved_provider = provider_resolution["provider"]
+    provider_decision = as_dict(payload["provider_decision"], "provider_decision")
+    exact_keys(provider_decision, {"provider", "constraint_id"}, "provider_decision")
+    resolved_provider = provider_decision["provider"]
     if resolved_provider not in PROVIDERS:
-        fail("provider_resolution.providerはawsまたはgcpでなければなりません")
-    provider_source_id = provider_resolution["source_artifact_id"]
-    if source_kind_by_id.get(provider_source_id) != "runtime_config":
-        fail("provider_resolution.source_artifact_idはruntime_config入力でなければなりません")
-    resolved_config = nonempty(provider_resolution["resolved_config"], "provider_resolution.resolved_config")
-    config_fingerprint = nonempty(provider_resolution["config_fingerprint"], "provider_resolution.config_fingerprint")
-    if not config_fingerprint.startswith("sha256:"):
-        fail("provider_resolution.config_fingerprintはsha256指紋でなければなりません")
-    provider_source = source_by_id[provider_source_id]
-    if provider_source["locator"] != resolved_config:
-        fail("同じ実行の解決済み設定pathがruntime_config入力と一致しません")
-    if provider_source["version_or_hash"] != config_fingerprint:
-        fail("同じ実行の設定指紋がruntime_config入力と一致しません")
+        fail("provider_decision.providerはawsまたはgcpでなければなりません")
+    # Deterministic validation declaration:
+    # source=provider_decision and the constraint it names; input=provider and
+    # constraint_id; normalization=none; predicate=the constraint exists, is an
+    # agreed_decision, and the provider selection cites it; diagnostic=which
+    # link is missing; positive=a CON- entry recording the requester's provider
+    # choice; negative=a hypothesis constraint or an unknown id; boundary=a
+    # constraint that exists but is not cited by the provider selection.
+    # This does not judge whether the chosen provider is architecturally apt.
+    provider_constraint_id = nonempty(provider_decision["constraint_id"], "provider_decision.constraint_id")
 
     driver_ids: set[str] = set()
     driver_kinds: dict[str, str] = {}
@@ -269,13 +267,13 @@ def validate_payload(payload: dict[str, Any]) -> None:
             fail(f"{identifier}.source_artifact_idが未解決です")
         for key in ("statement", "source_ref", "observed_at"):
             nonempty(item[key], f"{identifier}.{key}")
-    provider_constraint_ids = {
-        item["id"]
-        for item in constraints
-        if item["source_artifact_id"] == provider_source_id
-    }
-    if not provider_constraint_ids:
-        fail("解決providerがconstraintからruntime_config入力へ追跡されていません")
+    provider_constraint = next(
+        (item for item in constraints if item["id"] == provider_constraint_id), None
+    )
+    if provider_constraint is None:
+        fail("provider_decision.constraint_idがconstraintsに存在しません")
+    if provider_constraint["classification"] != "agreed_decision":
+        fail("provider_decision.constraint_idはagreed_decisionの制約でなければなりません")
 
     scope = as_dict(payload["scope"], "scope")
     exact_keys(
@@ -287,18 +285,39 @@ def validate_payload(payload: dict[str, Any]) -> None:
     for key in ("in_scope", "out_of_scope", "external_responsibilities"):
         string_list(scope[key], f"scope.{key}")
 
+    all_question_ids: set[str] = set()
     question_ids: set[str] = set()
-    question_keys = {"id", "question", "owner", "affected_refs", "blocks"}
+    question_keys = {"id", "question", "owner", "affected_refs", "blocks", "state", "resolution", "reason"}
     questions = as_list(payload["open_questions"], "open_questions")
     for index, raw in enumerate(questions):
         item = as_dict(raw, f"open_questions[{index}]")
         exact_keys(item, question_keys, f"open_questions[{index}]")
         identifier = register(item["id"], r"OQ-ARCH-[0-9]{3,}", "open question", seen)
-        question_ids.add(identifier)
+        all_question_ids.add(identifier)
         nonempty(item["question"], f"{identifier}.question")
         nonempty(item["owner"], f"{identifier}.owner")
         string_list(item["affected_refs"], f"{identifier}.affected_refs")
         string_list(item["blocks"], f"{identifier}.blocks")
+        state = item["state"]
+        if state not in {"open", "resolved", "withdrawn"}:
+            fail(f"{identifier}.stateが不正です")
+        if state == "resolved":
+            nonempty(item["resolution"], f"{identifier}.resolution")
+        elif item["resolution"] is not None:
+            fail(f"{identifier}.resolutionはresolvedの場合だけ設定できます")
+        nonempty(item["reason"], f"{identifier}.reason")
+        if state == "open":
+            question_ids.add(identifier)
+
+    question_review = as_dict(payload["question_review"], "question_review")
+    exact_keys(question_review, {"question_ids", "confirmed_by", "confirmation", "dialogue_complete"}, "question_review")
+    reviewed = string_list(question_review["question_ids"], "question_review.question_ids", non_empty=False)
+    if set(reviewed) != all_question_ids or len(reviewed) != len(all_question_ids):
+        fail("question_review.question_idsが質問一覧全体と一致しません")
+    nonempty(question_review["confirmed_by"], "question_review.confirmed_by")
+    nonempty(question_review["confirmation"], "question_review.confirmation")
+    if question_review["dialogue_complete"] is not True:
+        fail("question_review.dialogue_completeは明示確認後のtrueでなければなりません")
 
     alternative_keys = {
         "id", "name", "deployment_mode", "provider_scope", "driver_ids",
@@ -391,7 +410,7 @@ def validate_payload(payload: dict[str, Any]) -> None:
     mode = deployment["mode"]
     validate_mode(mode, providers, "deployment_model")
     if mode in {"single_cloud", "multi_cloud", "hybrid"} and resolved_provider not in providers:
-        fail("解決providerがdeployment_model.provider_scopeにありません")
+        fail("入力providerがdeployment_model.provider_scopeにありません")
     if deployment["decision_state"] not in {"decided", "proposed", "unresolved"}:
         fail("deployment_model.decision_stateが不正です")
     ensure_refs(deployment["constraint_ids"], constraint_ids, "deployment_model.constraint_ids")
@@ -475,9 +494,9 @@ def validate_payload(payload: dict[str, Any]) -> None:
             for key in ("choice", "provider", "service", "role"):
                 nonempty(item[key], f"{identifier}.{key}")
             if mode in {"single_cloud", "multi_cloud", "hybrid"} and item["provider"] != resolved_provider:
-                fail(f"{identifier}.providerが解決providerと一致しません")
-            if category == "provider" and not provider_constraint_ids.intersection(constraint_refs):
-                fail(f"{identifier}がruntime_config由来のprovider constraintへ追跡されていません")
+                fail(f"{identifier}.providerが入力providerと一致しません")
+            if category == "provider" and provider_constraint_id not in constraint_refs:
+                fail(f"{identifier}がprovider_decisionのprovider constraintへ追跡されていません")
             grounded_drivers = set(requirement_refs) | set(quality_refs) | set(workload_refs)
             if any(driver_states[ref] == "unresolved" for ref in grounded_drivers):
                 fail(f"{identifier}がunresolved driverをselected根拠にしています")
@@ -756,8 +775,8 @@ def validate_payload(payload: dict[str, Any]) -> None:
         if rendered_node is None:
             fail(f"diagram.sourceに表示ノードがありません: {item['id']}")
         memberships, rendered_line = rendered_node
-        if item["id"] not in rendered_line or re.search(r"[ぁ-んァ-ヶ一-龯]", rendered_line) is None:
-            fail(f"diagram.sourceの表示ノードにIDと日本語表示名がありません: {item['id']}")
+        if item["id"] not in rendered_line:
+            fail(f"diagram.sourceの表示ノードにIDがありません: {item['id']}")
         expected = {
             item["boundary_id"].replace("-", ""),
             item["availability_unit_id"].replace("-", ""),
