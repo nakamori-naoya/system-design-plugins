@@ -52,6 +52,6 @@
 
 ## 検証
 
-`scripts/validate.sh`は、マーケットプレイスとマニフェストの同一性、4個の直接公開skill、各referenceへの到達、隣接`playbook.yml` v2の宣言順序契約（`grill` → 検査script → `write-doc`の順、`references`入力）、4つの検査scriptと`terminology.py`のMarkdown fixtureに対する正例・反例・境界例を検査します。self-testは公開skill欠落、identity不一致、playbook欠落、未知needを意図的に作り、検証器が拒否することを確かめます。SKILL.mdの見出しの形や個数、文章の妥当性は検査せず、agentが読んで評価します。
+`scripts/validate.sh`は、兄弟checkout `../harness-tools/tools/validate-plugin-repository.py`（保守toolの唯一の正本。無ければ検査を止め、fixtureで代用しません）によるroot契約（配置・manifest・隣接`playbook.yml`・禁止参照形）に続けて、マーケットプレイスとマニフェストの同一性、4個の直接公開skill、各referenceへの到達、隣接`playbook.yml` v2の宣言順序契約（`grill` → 検査script → `write-doc`の順、`references`入力）、4つの検査scriptと`terminology.py`のMarkdown fixtureに対する正例・反例・境界例を検査します。self-testは公開skill欠落、identity不一致、playbook欠落、未知needを意図的に作り、検証器が拒否することを確かめます。SKILL.mdの見出しの形や個数、文章の妥当性は検査せず、agentが読んで評価します。
 
-公開スキルの実装が揃うまではリポジトリ検証が失敗する設計です。構造検査の成功、テストデータの静的検査、実モデルによる意味評価、実ツール端から端までの検証（E2E）は別の結果として報告します。
+CIは`.github/workflows/validate.yml`で`harness-tools`を兄弟checkoutし、`harness-tools/ci/validate.sh`でlocalと同じcommandを実行します。公開スキルの実装が揃うまではリポジトリ検証が失敗する設計です。構造検査の成功、テストデータの静的検査、実モデルによる意味評価、実ツール端から端までの検証（E2E）は別の結果として報告します。

@@ -1,37 +1,30 @@
 name: Validate
-
 on:
   push:
   pull_request:
-
 permissions:
   contents: read
-
 jobs:
   validate:
+    name: validate (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      # 公開playbook grill / write-doc への依存を実配布物に対して解決できるよう、依存 repository を
-      # 兄弟 checkout として置く。自 repo は <workspace>/<自分の名前>、依存は <workspace>/<repo名>。
-      # 兄弟は検証済みの main を取得し、PR 由来の ref を依存 checkout へ渡さない。
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # 自 repository は <workspace>/<自分の名前>、harness-tools と依存 provider は <workspace>/<repo 名> に兄弟 checkout する。
+      # 兄弟は検証済みの main を取得し、PR 由来の ref を依存 checkout へ渡さない（未信頼のコードを実行する経路を作らない）。
+      # 実行する検査は local の bash scripts/validate.sh と同じ command（harness-tools/ci/validate.sh が root 契約の後に呼ぶ）。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.event.repository.name }}
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ github.repository_owner }}/grill-plugins
+          repository: ${{ github.repository_owner }}/harness-tools
           ref: main
-          path: grill-plugins
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: ${{ github.repository_owner }}/write-doc-plugins
-          ref: main
-          path: write-doc-plugins
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+          path: harness-tools
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -39,10 +32,7 @@ jobs:
           go-version: '1.24.x'
       - name: Install CLI requirements
         shell: bash
-        run: |
-          go install github.com/mikefarah/yq/v4@v4.44.3
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Validate repository
+        run: bash harness-tools/ci/install-requirements.sh
+      - name: Validate
         shell: bash
-        working-directory: ${{ github.event.repository.name }}
-        run: bash scripts/validate.sh
+        run: bash harness-tools/ci/validate.sh "$GITHUB_WORKSPACE/${{ github.event.repository.name }}"
