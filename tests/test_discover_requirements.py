@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from canon_case import REQUIREMENTS, SKILLS, CanonCase
+from canon_case import FIXTURES, REQUIREMENTS, SKILLS, CanonCase
 
 
 class RequirementsContractTest(CanonCase):
@@ -89,7 +89,7 @@ class RequirementsContractTest(CanonCase):
 
     def test_terminology_absent_is_a_boundary_case(self) -> None:
         body = self.mutate(
-            "用語正本: /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/system-design-plugins/tests/fixtures/terminology/success.md 版: 1\n推奨用語名: 申請結果を確定する、申請結果の確定を取り消す、申請結果を確認する、申請者",
+            "用語正本: " + str(FIXTURES / "terminology/success.md") + " 版: 1\n推奨用語名: 申請結果を確定する、申請結果の確定を取り消す、申請結果を確認する、申請者",
             "用語正本: なし",
         )
         payload = self.assert_pass(body)
