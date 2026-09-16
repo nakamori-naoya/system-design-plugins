@@ -208,7 +208,7 @@
 - `constraints[].classification`: `fact`または`agreed_decision`。未確認の制約は仮説へ置く。
 - `requirements`: 根拠主張 ID、受益者ID、成功観測ID、検証方法、`impact.if_met`、`impact.if_unmet`、`affects`を必須にする。根拠主張は`fact`または`agreed_decision`だけ。
 - `hypotheses`: `id`、`statement`、仮説の`claim_ids`、`falsification_method`、`affected_ids`を持つ。
-- `open_questions`: 質問台帳であり、`id`、`question`、根拠の`claim_ids`、`owner`、`affected_ids`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。
+- `open_questions`: 質問台帳であり、`id`、`question`、根拠の`claim_ids`、`owner`、`affected_ids`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`open`の`reason`には、その時点の根拠から仮置きした推奨、その根拠、採らなかった解釈を書き、推奨の内容は正本側で`hypothesis`として扱う。
 - `question_review`: 質問台帳の全ID、確認者、一覧全体の確認内容、対話終了の真偽を持つ。全質問IDが一致し、`dialogue_complete=true`になるまで正本を保存しない。
 - `solution_inputs[].classification`: `constraint`、`hypothesis`、`design_proposal`。`linked_id`はそれぞれCON、HYP、nullにする。設計案の`routed_to`には要求を変更せず技術方式を比較・選定する責務の機械識別子を記録する。
 - `derived_requirements[]`: `DRV-` ID、`statement`、`classification`、`derived_from_claim_ids`、サービス特性、失敗リスク、必要な成果、検証方法、設計影響、見直し条件、後続を持つ。`confirmed`は確認済み根拠だけ、`hypothesis`は仮説根拠を一件以上持つ。

@@ -105,7 +105,7 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 
 `verification_plan`は`id`、`kind`、`objective`、`method`、`expected_evidence`、`owner`、`status`、`trace_refs`を持つ。実行していない検証は計画済みにする。
 
-`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。
+`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`open`の`reason`には、その時点の根拠から仮置きした推奨、その根拠、採らなかった代替案を書き、推奨は`unresolved`のままの選定に添える候補または`proposed`のADRとして扱う。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。
 
 未決の問いがある、配置判断が未決、選定が未決、採用済みADRがない場合は状態を`saved_with_open_questions`にする。それ以外は`ready_for_implementation_handoff`にできる。
 
