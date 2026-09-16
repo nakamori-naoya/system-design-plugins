@@ -34,7 +34,7 @@ steps:
     purpose: "採用仮定を要件と構成判断へ接続し、設計入力として閉じる"
   - id: confirm-question-inventory
     agent_work: invoking_agent
-    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    purpose: "成果を左右する問いを最大6問まで推奨付きで確認し、残る論点は推奨を仮置きした未決にし、全質問の状態・解決・撤回理由・影響先を一覧提示して一覧全体とこの実行での対話終了の明示確認を得る"
     provides: [question_review]
   - id: validate-and-save-canonical
     agent_work: invoking_agent
