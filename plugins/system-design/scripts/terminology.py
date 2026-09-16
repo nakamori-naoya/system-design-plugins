@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
-"""Validate a heading-based terminology Markdown and artifact references."""
+"""用語正本（見出し形式のMarkdown）と、それを参照する正本（Markdown）の整合を検査する。
+
+  python3 terminology.py check --terminology <用語正本の絶対path> --artifact <正本Markdownの絶対path> [--artifact ...]
+
+用語正本は frontmatter（version / subject）と、概念種別の H2 見出しの下に `### 推奨用語名` を置く形である。
+参照側の正本は `## 用語` 節に `用語正本: <絶対path> 版: <整数>` と `推奨用語名: <名>、<名>` を持つ。
+通ったときに言えるのは次だけである。
+
+  - 用語正本が表を使わず、既知の概念種別見出しの下に重複しない推奨用語名を置き、各用語が定義・状態・根拠・見直し条件を持つ
+  - 各参照側正本の `## 用語` が同じ用語正本（path）と同じ版を指し、列挙した推奨用語名がすべて用語正本にある
+  - 参照側正本に `## コマンドとクエリ` の表があれば、種別が コマンド / クエリ の操作名が用語正本の同じ概念種別（コマンド / クエリ）の推奨用語名である
+
+exit 0 = 通った（stdoutに用語正本の絶対path） / 2 = 述語が成り立たない（診断は標準エラー `FAIL: <理由>`）。
+"""
 
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from canon import Document, strip_markup, tables, terminology_lines  # noqa: E402  package共有の構文解析
 
 
 CATEGORIES = {
@@ -37,18 +52,6 @@ def fail(message: str) -> None:
     raise ContractError(message)
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    if not path.is_absolute() or path.is_symlink() or not path.is_file():
-        fail(f"成果物は絶対pathのregular fileでなければなりません: {path}")
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        fail(f"成果物をUTF-8 JSONとして読めません: {exc}")
-    if not isinstance(value, dict):
-        fail("成果物はJSON objectでなければなりません")
-    return value
-
-
 def parse_frontmatter(text: str) -> tuple[int, str, str]:
     match = re.match(r"\A---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if match is None:
@@ -73,7 +76,7 @@ def parse_frontmatter(text: str) -> tuple[int, str, str]:
     return version, values["subject"], text[match.end():]
 
 
-def validate_terminology_markdown(path: Path) -> tuple[int, set[str]]:
+def validate_terminology_markdown(path: Path) -> tuple[int, dict[str, str]]:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
         fail(f"用語正本は絶対pathのregular fileでなければなりません: {path}")
     try:
@@ -130,67 +133,75 @@ def validate_terminology_markdown(path: Path) -> tuple[int, set[str]]:
             fail(f"用語に状態・根拠・見直し条件が必要です: {term}")
         if labels["状態"] not in {"合意済み", "暫定"}:
             fail(f"用語の状態は合意済みまたは暫定でなければなりません: {term}")
-    return version, set(terms)
+    return version, {term: value["category"] for term, value in terms.items()}
 
 
-def string_list(value: Any, label: str) -> list[str]:
-    if not isinstance(value, list) or not value:
-        fail(f"{label}は1件以上の配列でなければなりません")
-    if not all(isinstance(item, str) and item.strip() for item in value):
-        fail(f"{label}は非空文字列の配列でなければなりません")
-    if len(set(value)) != len(value):
-        fail(f"{label}に重複があります")
-    return value
+def load_markdown(path: Path) -> Document:
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        fail(f"正本は絶対pathのregular fileでなければなりません: {path}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        fail(f"正本をUTF-8 Markdownとして読めません: {exc}")
+    try:
+        return Document(text)
+    except ValueError as exc:
+        fail(f"正本の構文が不正です: {path}: {exc}")
+    return Document("")
 
 
 def validate_reference(
-    artifact: dict[str, Any],
     artifact_path: Path,
     terminology_path: Path,
     terminology_version: int,
-    preferred_terms: set[str],
+    terms: dict[str, str],
 ) -> None:
-    terminology = artifact.get("terminology")
-    if not isinstance(terminology, dict) or set(terminology) != {"source", "usages"}:
-        fail(f"成果物に有効なterminology参照がありません: {artifact_path}")
-    source = terminology["source"]
-    usages = terminology["usages"]
-    if not isinstance(source, dict) or set(source) != {"locator", "version"}:
-        fail(f"成果物のterminology.sourceが不正です: {artifact_path}")
-    locator = source.get("locator")
-    if not isinstance(locator, str) or not Path(locator).is_absolute() or Path(locator).resolve() != terminology_path.resolve():
-        fail(f"用語正本locatorが不一致です: {artifact_path}")
-    if source.get("version") != terminology_version:
-        fail(f"用語正本versionが不一致です: {artifact_path}")
-    if not isinstance(usages, list):
-        fail(f"成果物のterminology.usagesが不正です: {artifact_path}")
-    for usage in usages:
-        if not isinstance(usage, dict) or set(usage) != {"subject_id", "preferred_terms"}:
-            fail(f"terminology.usagesが不正です: {artifact_path}")
-        refs = string_list(usage["preferred_terms"], f"{artifact_path}.preferred_terms")
-        missing = sorted(set(refs) - preferred_terms)
-        if missing:
-            fail(f"用語正本にない推奨用語名があります: {artifact_path}: {missing}")
+    document = load_markdown(artifact_path)
+    if "用語" not in document.sections:
+        fail(f"正本に `## 用語` 節がありません: {artifact_path}")
+    try:
+        locator, version, preferred = terminology_lines(document)
+    except ValueError as exc:
+        fail(f"{artifact_path}: {exc}")
+        return
+    if locator is None:
+        fail(f"正本が用語正本を参照していません（`用語正本: なし`）: {artifact_path}")
+        return
+    if Path(locator).resolve() != terminology_path.resolve():
+        fail(f"用語正本locatorが不一致です: {artifact_path}: {locator}")
+    if version != terminology_version:
+        fail(f"用語正本versionが不一致です: {artifact_path}: {version} != {terminology_version}")
+    missing = sorted(set(preferred) - set(terms))
+    if missing:
+        fail(f"用語正本にない推奨用語名があります: {artifact_path}: {missing}")
+    if "コマンドとクエリ" not in document.sections:
+        return
+    for table in tables(document.lines("コマンドとクエリ")):
+        if table["header"][:2] != ["操作", "種別"]:
+            continue
+        for row in table["rows"]:
+            if len(row) < 2:
+                continue
+            name, kind = strip_markup(row[0]), strip_markup(row[1])
+            if kind not in ("コマンド", "クエリ"):
+                continue
+            if name not in terms:
+                fail(f"用語正本にない操作名があります: {artifact_path}: {name}")
+            if terms[name] != kind:
+                fail(f"操作名の概念種別が用語正本と一致しません: {artifact_path}: {name} は用語正本では {terms[name]}、正本では {kind}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
     parser.add_argument("--terminology", required=True)
     parser.add_argument("--artifact", action="append", required=True)
     args = parser.parse_args()
     try:
         terminology_path = Path(args.terminology)
-        version, preferred_terms = validate_terminology_markdown(terminology_path)
+        version, terms = validate_terminology_markdown(terminology_path)
         for raw_path in args.artifact:
-            artifact_path = Path(raw_path)
-            validate_reference(
-                load_json(artifact_path),
-                artifact_path,
-                terminology_path,
-                version,
-                preferred_terms,
-            )
+            validate_reference(Path(raw_path), terminology_path, version, terms)
     except ContractError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 2

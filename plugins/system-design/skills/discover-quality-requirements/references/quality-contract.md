@@ -1,27 +1,27 @@
 # 品質要求正本の契約
 
-この参照資料は、品質要求を測定可能にする項目、合意状態、利用・負荷対応、矛盾、保存スキーマを定める。クラウド・製品・構成は定めない。
+この参照資料は、品質要求を測定可能にする項目、合意状態、利用・負荷対応、矛盾の判断境界と、正本（quality-requirements型のMarkdown）に対する機械検査の宣言を定める。クラウド・製品・構成は定めない。正本の記法（見出し・表の列・ID）はwrite-docの`quality-requirements`型のtemplateが定める。
 
 ## 品質区分
 
-次の10区分を一件ずつ評価する。括弧内は現行公開契約で固定する機械値である。
+次の10区分を一件ずつ評価する。分類の語は正本の「品質要求」の分類列と「品質区分の網羅」の区分列にそのまま使う。
 
-1. 応答時間（`latency`）: 利用者またはシステム境界間で完了までに要する時間。
-2. 処理量（`throughput`）: 指定時間内に受理または完了する仕事量。
-3. 可用性（`availability`）: 定義したサービス時間窓と観測点で成功できる割合。
-4. 整合性（`consistency`）: 書込み後の読取り、複製、競合で許容する不一致。
-5. 耐久性（`durability`）: 受理済み情報を失わない割合または許容損失。
-6. 復旧性（`recovery`）: 障害後の復旧時間、復旧点、再開条件。
-7. 安全性（`security`）: 脅威、主体、資産、境界に対する防止・検出条件。
-8. プライバシー（`privacy`）: 個人情報の収集、利用、保持、削除、開示の条件。
-9. 運用性（`operability`）: 検知、診断、変更、復旧を運用者が行える条件。
-10. 費用（`cost`）: 対象期間と利用量に対する費用上限または効率。
+1. 応答時間: 利用者またはシステム境界間で完了までに要する時間。
+2. 処理量: 指定時間内に受理または完了する仕事量。
+3. 可用性: 定義したサービス時間窓と観測点で成功できる割合。
+4. 整合性: 書込み後の読取り、複製、競合で許容する不一致。
+5. 耐久性: 受理済み情報を失わない割合または許容損失。
+6. 復旧性: 障害後の復旧時間、復旧点、再開条件。
+7. 安全性: 脅威、主体、資産、境界に対する防止・検出条件。
+8. プライバシー: 個人情報の収集、利用、保持、削除、開示の条件。
+9. 運用性: 検知、診断、変更、復旧を運用者が行える条件。
+10. 費用: 対象期間と利用量に対する費用上限または効率。
 
-区分の網羅状況（機械キー: `category_coverage`）の判定（`disposition`）は次の通りである。
+「品質区分の網羅」の判定は次の通りである。
 
-- `specified`: 一件以上のQRが測定可能な合意済みまたは仮説である。
-- `unresolved`: 関係し得るが、判断に必要な情報がなく未決の問いがある。
-- `not_applicable`: システム境界または業務結果から非該当である根拠がある。単に話題に出なかった場合には使わない。
+- `指定済み`: 同じ分類の`QR-`が一件以上、測定可能な合意済み（`agreed_decision`）または仮説（`hypothesis`）である。
+- `未決`: 関係し得るが、判断に必要な情報がなく、決める問い（`*-OQ-`）を理由または品質要求IDに引く。
+- `非該当`: システム境界または業務結果から非該当である理由を書き、`QR-`を持たない。単に話題に出なかった場合には使わない。
 
 典型例: 公開APIの可用性を「暦月の有効な要求のうち成功応答が99.9%以上」と指定する。
 
@@ -33,99 +33,61 @@
 
 ## 測定可能な品質要求
 
-`agreed`と`hypothesis`のQRは、次を一組にする。
+`agreed_decision`と`hypothesis`のQRは、「品質要求」の表の1行に次を一組にする。
 
-- `observation_point`: 測定の開始・終了または境界。
-- `metric`: `name`と`statistic`。例: `end_to_end_latency`と`p95`。
-- `threshold`: `operator`、0以上の有限な`value`、`unit`。
-- `time_window`: 集計窓と評価期間。
-- `population`: 合否の分母となる要求、イベント、記録、操作等。
-- `verification_method`: 再現可能な測定または試験。
-- `verification_owner`: 実施または承認する役割。
-- `confidence`: `high`、`medium`、`low`の一つ。
-- `design_sensitivity`: 閾値または不確かさが変える後続判断。
+- 観測点: 測定の開始・終了または境界。
+- 指標: 測る値と統計量。例: 成功した検索の95パーセンタイル。
+- 閾値: `<演算子> <数値> <単位>`。演算子は`<`、`<=`、`=`、`>=`、`>`のいずれか。例 `<= 300 ミリ秒`、`= 0 件`。
+- 時間窓: 集計窓と評価期間。
+- 対象母集団: 合否の分母となる要求、イベント、記録、操作等。
+- 検証方法: 再現可能な測定または試験と、実施または承認する役割。
+- 根拠状態: `agreed_decision`または`hypothesis`。
 
-`operator`は`<`、`<=`、`=`、`>=`、`>`のいずれかとする。範囲が必要なら上下限を別QRにする。一件のQRは一つの合否判定だけを持つ。
+範囲が必要なら上下限を別QRにする。一件のQRは一つの合否判定だけを持つ。設計感度（閾値または不確かさが変える後続判断）は「仮説と未決」の検証計画と影響先に書く。
 
-`unresolved`は`threshold=null`、`confidence=unknown`、一件以上の未決の問いを持つ。既知の観測点や指標を`null`に戻す必要はないが、必要項目が一つでも欠けた状態を合意済みまたは仮説にしない。
+`open_question`のQRは閾値を`未決`にし、決める問いを「仮説と未決」に持つ。既知の観測点や指標を消す必要はないが、必要項目が一つでも欠けた状態を合意済みまたは仮説にしない。
 
-`agreed`は同じ区分の`agreed_decision` 根拠主張を最低一件持ち、仮説 根拠主張を根拠に含めない。`hypothesis`は同じ区分の仮説 根拠主張を最低一件持つ。現在実績を示す事実だけでは目標値にならない。
+`agreed_decision`は同じ区分の合意済み根拠を持ち、仮説を根拠に含めない。`hypothesis`は同じ区分の仮説根拠を持つ。現在実績を示す事実だけでは目標値にならない。
 
 ## 利用・負荷対応と矛盾
 
-`workload_links`は品質要求と利用・負荷モデルの対応を保存する。
+品質要求と利用・負荷モデルの対応は、「対象と入力根拠」の表（入力ID = `WL-` / `DIN-`、根拠状態）と「追跡」の表（負荷ID）に保存する。
 
-- `supports`: 確認済み 利用・負荷が検証条件または閾値を直接支える。
-- `assumption`: 利用・負荷 仮説を設計比較の暫定入力として使う。
-- `conflicts`: 利用・負荷と品質要求の値、時間窓、母集団または状態が両立しない。
-- `blocked_by`: 利用・負荷が未決で、品質要求または検証条件を確定できない。
+- 確認済みの利用・負荷は検証条件または閾値を直接支える根拠になる。
+- 仮説の利用・負荷は設計比較の暫定入力として、根拠状態`hypothesis`のまま載せる。QRを`agreed_decision`にする根拠にはならない。
+- 未決の利用・負荷（`WL-OQ-`）に依存するQRは`open_question`にし、その未決を「仮説と未決」に継続行として載せる。
+- 両立しない値、時間窓、母集団、状態は矛盾（`QCON-`）にする。関係を変えて利用・負荷状態を隠さない。
 
-利用・負荷が仮説なら関係は`assumption`または`conflicts`でなければならない。利用・負荷が未決なら`blocked_by`または`conflicts`でなければならない。関係を変えて利用・負荷状態を隠さない。
+矛盾は対立するID（2つ以上）、内容、判断者、`open`または`resolved`状態を持つ。未解消（`open`）の矛盾は、それを解く`open_question`の行の影響先から参照される。解消済み（`resolved`）の矛盾は解消内容と事実／合意済み決定の根拠を内容に持ち、仮説だけで解消扱いにしない。
 
-`conflicts` 関係は最低一件の`QCON-` IDへ結ぶ。矛盾は`left_ref`、`right_ref`、statement、`open`または`resolved`状態を持つ。未解消の矛盾は解消内容をnullにし、解消する未決の問いを持つ。解消済みの矛盾は解消内容と事実/合意済み決定 根拠主張の根拠を持ち、仮説だけで解消扱いにしない。
-
-典型例: QR-002が毎秒250要求のピークを暫定検証条件に使い、`WL-001.peak_rate`が仮説なら関係は`assumption`である。
+典型例: QR-002が毎秒250要求のピークを暫定検証条件に使い、`WL-001`のピーク率が仮説なら、QR-002の根拠状態は`hypothesis`のままである。
 
 非該当例: 「管理キューを使えば250 要求/秒を処理できる」と品質要求へ書く。これは製品・方式案であり、品質指標でも利用・負荷事実でもない。
 
-境界例: 利用・負荷とQRの時間窓だけが異なる場合も、値が同じだから`supports`とはしない。換算根拠がなければ`conflicts`または`blocked_by`にする。
+境界例: 利用・負荷とQRの時間窓だけが異なる場合も、値が同じだから支える根拠とはしない。換算根拠がなければ矛盾または未決にする。
 
-## 正本スキーマ
+## 正本の記法と機械検査の宣言
 
-`schema_version`は2だけを受理する。最上位キーは次の12件だけにする。
+正本はwrite-docが保存するMarkdownだけであり、JSON正本は持たない。`scripts/quality.py check --upstream <要求発見正本> --upstream <利用負荷モデル正本>`は本文を標準入力で受け、次の宣言に従って構造契約だけを検査する。閾値の妥当性、区分の判定、矛盾の扱いの適否はagentが読んで評価する。
 
-- `schema_version`
-- `artifact`
-- `input_artifacts`
-- `claims`
-- `quality_requirements`
-- `category_coverage`
-- `workload_links`
-- `conflicts`
-- `open_questions`
-- `question_review`
-- `handoff`
-- `change_log`
-
-`artifact`は`id`、`version`、`subject`、`state`を持つ。状態は`ready_for_architecture`または`saved_with_open_questions`である。
-
-`input_artifacts`は`id`、`kind`、`locator`、`version_or_hash`、`observed_at`を持つ。kindは`requirements`、`journey`、`domain`、`workload`、`telemetry`、`decision`、`other`の一つである。
-
-`claims`は`id`、`statement`、`classification`、`source_artifact_id`、`source_ref`、`observed_at`、`category`を持つ。
-
-`quality_requirements`は次を持つ。
-
-```json
-{
-  "id": "QR-001",
-  "category": "latency",
-  "title": "状態確認の応答時間",
-  "status": "agreed",
-  "source_claim_ids": ["CLM-001"],
-  "upstream_refs": ["REQ-003", "JRN-002"],
-  "workload_link_ids": ["QWL-001"],
-  "observation_point": "外部入口での要求受信から応答最終バイトまで",
-  "metric": {"name": "end_to_end_latency", "statistic": "p95"},
-  "threshold": {"operator": "<=", "value": 300, "unit": "milliseconds"},
-  "time_window": "5分移動窓を暦月単位で評価",
-  "population": "有効な状態確認要求",
-  "verification_method": "代表要求を再生し、追跡区間を集計する",
-  "verification_owner": "サービス責任者",
-  "confidence": "high",
-  "design_sensitivity": "閾値が200ミリ秒未満へ変わった場合は応答時間のトレードオフを再評価する",
-  "open_question_ids": [],
-  "conflict_ids": []
-}
+```text
+正本: write-docの quality-requirements 型のtemplateが定める記法。上流正本（--upstream）が定義する REQ- / DRV- / CON- / WL- / DIN- と上流の HYP / OQ。この文書の判断境界。
+入力: 標準入力の本文（UTF-8 Markdown）と、--upstream の上流正本の絶対path（複数可）。
+正規化: HTMLコメントを除き、コードブロック外の `#` 見出しでH2節へ切る。表は見出し行・区切り行・本文行に分け、セルの `*` と backtick を除く。上流正本からは表の1列目と `### <ID>:` 小見出しのIDを定義済みIDとして拾う。
+合格述語:
+  - H2が template の名前と順序に一致し、H1と冒頭の本文段落があり、どの節も空でない
+  - `## 対象と入力根拠` の表の入力IDが上流へ到達し、根拠状態が機械値から1つ以上
+  - `## 品質要求` の表の QR- が一意で、分類が10語のどれか、根拠状態が agreed_decision / hypothesis / open_question。閾値は `<演算子> <数値> <単位>`（演算子は < <= = >= >）で、open_question の行だけ 未決。agreed_decision / hypothesis の行は観測点・指標・時間窓・対象母集団・検証方法が指示語（なし / 未決 / —）でない
+  - `## 品質区分の網羅` の表が10区分を各1行持ち、判定が 指定済み / 未決 / 非該当。指定済みは同じ分類の測定可能な QR- を1つ以上引く。非該当は QR- を引かず理由を持つ。未決は理由または品質要求IDに `*-OQ-` を引き、その問いが `## 仮説と未決` の open_question 行にある。測定可能な QR- がある分類は 指定済み でなければならない
+  - `## トレードオフと矛盾` の表の QCON- が一意で、対立するIDが2つ以上到達し、状態が open / resolved。open の矛盾は `## 仮説と未決` の open_question 行の影響先から参照される（該当が無ければ `なし` の行）
+  - `## 仮説と未決` の表の ID が `<接頭辞>-HYP-` / `<接頭辞>-OQ-` で、根拠状態がID種別と一致し、検証計画が空でなく、QR- 以外の接頭辞は上流で定義済み
+  - `## 追跡` の表に全 QR- が現れ、要求ID・負荷IDが上流へ到達する（ADR・図ノードIDは 未作成 でよい）
+  - 本文（冒頭を含む）で引く QR / QCON / QR-HYP / QR-OQ と上流の REQ / DRV / CON / WL / DIN / REQ-HYP / REQ-OQ / WL-HYP / WL-OQ がすべて定義済み。上流家族を引きながら --upstream が無ければ不合格。ADR- / NODE- は後続の資料のIDなので検査しない
+失敗時の診断: 標準エラーに `FAIL: <理由>`（節名、ID、列、期待した語彙、未解決ID）を1件。終了code 2
+正例: tests/fixtures/discover-quality-requirements/success.md（--upstream に要求発見・利用負荷のfixture。status: unresolved）。未決と矛盾を除いた写し（status: ready）
+反例: 閾値が `99.9%`（演算子無し）や「高い」、open_question の行に数値の閾値、hypothesis の行に 未決、分類が「レイテンシ」、根拠状態が fact、10区分に欠け、別分類の QR- を引く網羅行、非該当が QR- を持つ、未決の区分が問いを引かない、引いた問いが仮説と未決に無い、open の矛盾を引く問いが無い、対立するIDが1つ、追跡に無い QR-
+境界例: 節内の本文段落は表と共存できる。追跡の ADR・図ノードID に ADR- / NODE- を書いても参照到達は検査しない。矛盾が無いときの `なし` 行は正例
+意味評価として残す範囲: 観測点・指標・母集団の選び方、閾値と時間窓の妥当性、区分の判定（指定済み / 未決 / 非該当）の根拠、矛盾の内容と判断者、負荷の仮説を合意済み前提へ変えていないか、用語正本の語の使い方
 ```
 
-`category_coverage`は`category`、`disposition`、`rationale`、`quality_requirement_ids`、`open_question_ids`を持ち、10区分を一度ずつ含む。
-
-`workload_links`は`id`、`quality_requirement_id`、`workload_source_id`、`workload_ref`、`workload_status`、`relation`、`rationale`、`conflict_ids`、`open_question_ids`を持つ。
-
-`conflicts`は`id`、`left_ref`、`right_ref`、`statement`、`status`、`resolution`、`evidence_claim_ids`、`open_question_ids`を持つ。
-
-`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`open`の`reason`には、その時点の根拠から仮置きした推奨、その根拠、採らなかった解釈を書き、推奨の閾値は正本側で`hypothesis`または`unresolved`として扱う。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。`handoff`は`ready`、`blocking_question_ids`、`quality_requirement_ids`、`workload_link_ids`、`conflict_ids`を持つ。
-
-未決の問いまたは未解消の矛盾が一件でもあれば`handoff.ready=false`、成果物の状態は`saved_with_open_questions`にする。なければ`handoff.ready=true`、状態は`ready_for_architecture`にする。仮説は状態を保って引き渡しできるが、後続は合意済み前提として扱わない。
-
-`change_log`は版ごとに`version`、`changed_input_ids`、`invalidated_refs`、`summary`を持つ。上流版、観測点、時間窓、母集団、利用・負荷状態が変わったら、影響するQR/QWL/QCONを無効化した参照へ残す。
+用語正本との整合はこの型の正本ではscriptで検査しない。用語正本があるときは、本文の語が用語正本の推奨用語名と一致するかをagentが読んで確かめる。

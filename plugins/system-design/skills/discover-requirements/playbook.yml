@@ -1,16 +1,21 @@
+# discover-requirements — 要求源から要求発見正本（requirements-discovery型のMarkdown）を1本作る。
+# 工程順と入出力だけを持つ。判断規律はSKILL.mdとreferencesが持つ。対話の作法はgrillの公開契約が持つ。
+# 本文はagentがインメモリで保持し、検査scriptへは標準入力で渡す。JSONも一時fileも作らず、保存はwrite-docが行う。
 version: 2
 name: discover-requirements
-description: 根拠付き要求のJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
-inputs: [request, referenced_artifacts, document_destination]
+description: 要求源と依頼から、事実・合意・仮説・未決を混同しない要求発見正本（Markdown）を同じagentが宣言順に作る。
+inputs: [request, references, document_destination]
 instructions:
   execution:
     directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
 requires:
+  - {plugin: grill, marketplace: grill}
   - {plugin: write-doc, marketplace: write-doc}
 steps:
   - id: split-evidence-claims
     agent_work: invoking_agent
-    purpose: "要求源を根拠主張単位に分ける"
+    purpose: "依頼、referencesの資料、要求源を読み、根拠を根拠ID（SRC-）と根拠状態に分ける"
+    needs: [request, references]
   - id: separate-beneficiary-purpose-observation
     agent_work: invoking_agent
     purpose: "受益者、目的、観測を分ける"
@@ -32,28 +37,29 @@ steps:
   - id: separate-decisions-and-details
     agent_work: invoking_agent
     purpose: "理由付き設計判断を残し、実装詳細を後続へ送る"
-  - id: confirm-question-inventory
-    agent_work: invoking_agent
-    purpose: "成果を左右する問いを最大6問まで推奨付きで確認し、残る論点は推奨を仮置きした未決にし、全質問の状態・解決・撤回理由・影響先を一覧提示して一覧全体とこの実行での対話終了の明示確認を得る"
-    provides: [question_review]
-  - id: validate-and-save-canonical
-    agent_work: invoking_agent
-    purpose: "scripts/requirements.pyでJSON正本を検査して保存する"
-    needs: [question_review]
-    provides: [requirements_artifact_path]
+  - id: settle
+    playbook: grill
+    purpose: "手順1〜8で残った未決のうち、答えで要求・境界・受入観測・後続の判断が変わる問いを成果を左右する順に推奨付きでquestionsへ渡し、grillの公開契約に従って利用者と解消し、決定と未決（推奨付き）を受け取る"
+    needs: [request, references]
+    provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を因果順に組み立てる"
-    needs: [requirements_artifact_path]
+    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として後続設計で決める論点へ書き、templateの記法で要求発見正本の本文をインメモリで組み立てる"
+    needs: [decisions, open_questions]
     provides: [requirements_document_text]
+  - id: verify
+    script: scripts/requirements.py
+    purpose: "本文を標準入力で受け、H2の集合と順序、根拠IDの一意性と参照到達、根拠状態の語彙、仮説→要求・制約・判断への昇格、スコープ4区分、コマンドとクエリの種別と対操作、全要件の観測可能な完了を述語として検査し、statusとID一覧を返す"
+    needs: [requirements_document_text]
+    provides: [verification_result]
   - id: save-markdown-canonical
     playbook: write-doc
-    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してrequirements-discovery型の資料を1本保存する"
+    purpose: "同じagentが検査済み本文をkind: textのmaterialにし、document_destinationの保存先（output_directoryとname、またはupdate_target）と入力のreferencesをそのまま渡してrequirements-discovery型の資料を1本保存する"
     input:
       document_type: requirements-discovery
-    needs: [requirements_document_text, document_destination]
+    needs: [requirements_document_text, verification_result, document_destination, references]
     provides: [requirements_document_path]
   - id: read-back-document
     agent_work: invoking_agent
-    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、未決、handoffが欠落・昇格していないことを確かめる"
-    needs: [requirements_artifact_path, requirements_document_path]
+    purpose: "保存した資料を読み戻し、検査した本文と同じID、根拠状態、未決、statusを保っていることを確かめる"
+    needs: [requirements_document_path, verification_result]

@@ -232,6 +232,15 @@ def replace_first_executor(root: Path, identity: str, action: str, target: str, 
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def add_need(root: Path, identity: str, value: dict) -> None:
+    """先頭以外の工程（既にneedsを持たない工程）へ未知のneedを足す。"""
+    path = root / "skills" / identity / "playbook.yml"
+    loaded = load_yaml(path)
+    step = next(item for item in loaded["steps"][1:] if "needs" not in item and "conditional_needs" not in item)
+    step.update(value)
+    path.write_text(json.dumps(loaded, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def self_test(plugin: Path) -> None:
     identity = identities(plugin)[0]
     equivalent_links = (
@@ -265,8 +274,8 @@ def self_test(plugin: Path) -> None:
         ("playbook欠落", lambda root: (root / "skills" / identity / "playbook.yml").unlink(), "regular file"),
         ("別fileへのlink", lambda root: replace_entry(root, identity, "[工程順序の正本](playbook.yml)", "[工程順序の正本](other.yml)"), "接続していません"),
         ("別file inlineと同名definition", lambda root: replace_entry(root, identity, "[工程順序の正本](playbook.yml)", "[工程順序の正本](other.yml)\n\n[工程順序の正本]: playbook.yml\n"), "接続していません"),
-        ("未知need", lambda root: replace(root, identity, "agent_work: invoking_agent", "agent_work: invoking_agent\n    needs: [unknown]"), "公開入力または先行provides"),
-        ("未知conditional need", lambda root: replace(root, identity, "agent_work: invoking_agent", "agent_work: invoking_agent\n    conditional_needs: [{when: branch, needs: [unknown]}]"), "公開入力または先行provides"),
+        ("未知need", lambda root: add_need(root, identity, {"needs": ["unknown"]}), "公開入力または先行provides"),
+        ("未知conditional need", lambda root: add_need(root, identity, {"conditional_needs": [{"when": "branch", "needs": ["unknown"]}]}), "公開入力または先行provides"),
         ("不存在script", lambda root: replace_first_executor(root, identity, "script", "scripts/missing.sh", False), "scripts/配下に実在しません"),
         ("未知skill", lambda root: replace_first_executor(root, identity, "skill", "missing-public-skill", False), "公開宣言された実在skill"),
         ("未宣言playbook", lambda root: replace_first_executor(root, identity, "playbook", "undeclared-playbook", False), "requiresに宣言されていません"),

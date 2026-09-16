@@ -1,468 +1,87 @@
 #!/usr/bin/env python3
-"""Regression tests for design-cloud-architecture behavior."""
+"""design-cloud-architecture の検査script（architecture.py）の正例・反例・境界例。
+
+正本: write-docの cloud-architecture template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文、--provider、--upstream の要求発見・利用負荷・品質要求正本（fixture）。
+"""
 
 from __future__ import annotations
 
-import copy
-import json
-import shutil
-import subprocess
-import tempfile
 import unittest
-from pathlib import Path
+
+from canon_case import ARCHITECTURE, QUALITY, REQUIREMENTS, SKILLS, WORKLOAD, CanonCase
 
 
-ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_ROOT = ROOT / "plugins/system-design"
-SKILL_ROOT = PACKAGE_ROOT / "skills/design-cloud-architecture"
-SCRIPT = SKILL_ROOT / "scripts/architecture.py"
-FIXTURES = ROOT / "tests/fixtures/design-cloud-architecture"
-CAPABILITIES = {
-    "provider", "region_az", "compute", "network", "storage", "database",
-    "messaging", "identity", "edge", "observability", "backup_dr", "delivery",
-}
+class ArchitectureContractTest(CanonCase):
+    script = SKILLS / "design-cloud-architecture/scripts/architecture.py"
+    fixture = ARCHITECTURE
+    arguments = ["--provider", "aws", "--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD), "--upstream", str(QUALITY)]
 
+    def test_success_fixture_passes(self) -> None:
+        payload = self.assert_pass(self.body())
+        self.assertEqual(payload["document_type"], "cloud-architecture")
+        self.assertEqual(payload["status"], "unresolved")
+        self.assertEqual(payload["provider"], "aws")
+        self.assertEqual(payload["provider_constraints"], ["CON-001"])
+        self.assertEqual(payload["nodes"], ["NODE-EDGE", "NODE-API", "NODE-DB"])
+        self.assertEqual(payload["unresolved_capabilities"], ["バックアップ/DR"])
+        self.assertEqual(payload["accepted_adrs"], [])
 
-class ArchitectureContractTest(unittest.TestCase):
-    def call(self, script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["python3", str(script), *[str(argument) for argument in arguments]],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    def load(self, name: str) -> dict:
-        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
-        if value.get("schema_version") == 2:
-            for item in value["open_questions"]:
-                item.update(state="open", resolution=None, reason="未決として一覧確認した")
-            value["question_review"] = {
-                "question_ids": [item["id"] for item in value["open_questions"]],
-                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
-                "dialogue_complete": True,
-            }
-        return value
-
-    def write(self, path: Path, value: dict) -> None:
-        path.write_text(
-            json.dumps(value, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-    def check_temporary(self, artifact: dict) -> subprocess.CompletedProcess[str]:
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        path = Path(temporary.name) / "artifact.json"
-        self.write(path, artifact)
-        return self.call(SCRIPT, "check", "--file", path.resolve())
-
-    def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        result = self.check_temporary(self.load("success.json"))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stderr, "")
-
-    def test_withdrawn_question_does_not_block_ready_but_requires_final_confirmation(self) -> None:
-        artifact = self.load("success.json")
-        artifact["open_questions"] = [{"id": "OQ-ARCH-999", "question": "撤回済み", "owner": "利用者", "affected_refs": ["SEL-001"], "blocks": ["implementation_handoff"], "state": "withdrawn", "resolution": None, "reason": "対象外と合意"}]
-        artifact["question_review"]["question_ids"] = ["OQ-ARCH-999"]
-        self.assertEqual(self.check_temporary(artifact).returncode, 0)
-        artifact["question_review"]["question_ids"] = []
-        self.assertEqual(self.check_temporary(artifact).returncode, 2)
-
-    def test_schema_one_is_rejected_without_migration_path(self) -> None:
-        artifact = self.load("success.json")
-        artifact["schema_version"] = 1
-        del artifact["terminology"]
-        result = self.check_temporary(artifact)
+    def test_provider_is_a_public_input(self) -> None:
+        self.arguments = ["--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD), "--upstream", str(QUALITY)]
+        self.assert_fail(self.body(), "aws または gcp", "--provider", "azure")
+        self.assert_fail(self.body(), "入力provider（GCP）と一致しません", "--provider", "gcp")
+        result = self.run_check(self.body())
         self.assertEqual(result.returncode, 2)
-        self.assertIn("schema_versionは2", result.stderr)
+        self.assertIn("--provider", result.stderr)
 
-    def test_success_contains_required_design_products(self) -> None:
-        artifact = self.load("success.json")
-        self.assertEqual(
-            {item["category"] for item in artifact["selections"]},
-            CAPABILITIES,
-        )
-        self.assertGreaterEqual(len(artifact["alternatives"]), 2)
-        self.assertTrue(any(item["status"] == "accepted" for item in artifact["adrs"]))
-        self.assertTrue(artifact["diagram"]["editable"])
-        self.assertTrue(artifact["diagram"]["source"].startswith("flowchart"))
-        self.assertTrue(artifact["traceability"])
-        self.assertTrue(artifact["failure_scenarios"])
-        self.assertTrue(artifact["verification_plan"])
+    def test_provider_constraint_must_be_agreed(self) -> None:
+        self.assert_fail(self.mutate("| CON-001 | agreed_decision |", "| CON-001 | hypothesis |"), "agreed_decision の CON-（入力providerの根拠）がありません")
+        self.assert_fail(self.mutate("| プロバイダー | AWS | GCP | CON-001 |", "| プロバイダー | AWS | GCP | REQ-001 |"), "プロバイダー の根拠IDに agreed_decision の CON- がありません")
+        self.assert_fail(self.mutate("| 単一プロバイダーへ依存する | agreed_decision |", "| 単一プロバイダーへ依存する | hypothesis |"), "プロバイダー は入力providerの合意なので agreed_decision")
 
-    def test_input_provider_is_traced_to_an_agreed_constraint_and_mismatches_are_rejected(self) -> None:
-        # 正例: 入力providerは合意済み制約（CON-）へ辿れ、provider選定がその制約を引用する。
-        artifact = self.load("success.json")
-        decision = artifact["provider_decision"]
-        constraint = next(item for item in artifact["constraints"] if item["id"] == decision["constraint_id"])
-        provider_selection = next(
-            item for item in artifact["selections"] if item["category"] == "provider"
-        )
-        self.assertEqual(decision["provider"], "aws")
-        self.assertEqual(constraint["classification"], "agreed_decision")
-        self.assertEqual(provider_selection["provider"], "aws")
-        self.assertIn(decision["constraint_id"], provider_selection["constraint_ids"])
+    def test_twelve_capabilities_once(self) -> None:
+        self.assert_fail(self.mutate("| デリバリー | GitHub ActionsからECSへのローリング更新 |", "| 配置 | GitHub ActionsからECSへのローリング更新 |"), "代替案比較.選定項目 は")
+        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito |", "| エッジ | 非該当 | Cognito |"), "12選定項目を各1行")
 
-        # 反例: aws/gcp以外のprovider。
-        invalid_provider = self.load("success.json")
-        invalid_provider["provider_decision"]["provider"] = "azure"
-        result = self.check_temporary(invalid_provider)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("awsまたはgcp", result.stderr)
+    def test_selection_state_rules(self) -> None:
+        self.assert_fail(self.mutate("| バックアップ/DR | 未決 |", "| バックアップ/DR | 大阪への複製 |"), "open_question なので採用候補は 未決")
+        self.assert_fail(self.mutate("| QR-001、ARC-OQ-001 | 該当なし |", "| QR-001 | 該当なし |"), "open_question なので根拠IDに決める問い")
+        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito | CON-001 | 該当なし | 利用者認証は組織のID基盤へ委ねる | not_applicable |", "| ID管理 | Cognito | なし | CON-001 | 該当なし | 利用者認証は組織のID基盤へ委ねる | not_applicable |"), "not_applicable なので採用候補は 非該当")
+        self.assert_fail(self.mutate("| 計算処理 | ECS on Fargate | EKS、Lambda |", "| 計算処理 | ECS on Fargate | なし |"), "比較のため代替案が1つ以上必要")
+        self.assert_fail(self.mutate("| ARC-OQ-001 | open_question | リージョン障害時に何時間で復旧すべきか |", "| ARC-OQ-002 | open_question | リージョン障害時に何時間で復旧すべきか |"), "参照が未解決です: ARC-OQ-001")
 
-        # 反例: 存在しない制約ID。
-        unknown_constraint = self.load("success.json")
-        unknown_constraint["provider_decision"]["constraint_id"] = "CON-999"
-        result = self.check_temporary(unknown_constraint)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("constraintsに存在しません", result.stderr)
+    def test_nodes_appear_in_diagram_and_trace(self) -> None:
+        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>結果データベース")]', 'NODE_DB[("結果データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
+        self.assert_fail(self.mutate("  subgraph AU_DATA[\"東京リージョン・結果データ\"]\n    NODE_DB[(\"NODE-DB<br/>結果データベース\")]\n  end\n", "  subgraph AU_DATA[\"東京リージョン・結果データ\"]\n    NODE_DB[(\"NODE-DB<br/>結果データベース\")]\n"), "subgraph と end が対応していません")
+        self.assert_fail(self.mutate("flowchart LR", "graph LR"), "flowchart で始め")
+        self.assert_fail(self.mutate("| ADR-001 | NODE-EDGE、NODE-API、NODE-DB | 80件/秒", "| ADR-001 | NODE-EDGE、NODE-API | 80件/秒"), "要求トレーサビリティに現れない ADR / 図ノードがあります: ['NODE-DB']")
+        self.assert_fail(self.mutate("| NODE-DB | 結果データベース。", "| NODE_DB | 結果データベース。"), "図ノードIDの形式が不正です")
 
-        # 反例: 仮説の制約をprovider根拠にする。
-        hypothesis_constraint = self.load("success.json")
-        hypothesis_constraint["provider_decision"]["constraint_id"] = "CON-003"
-        result = self.check_temporary(hypothesis_constraint)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("agreed_decision", result.stderr)
+    def test_failure_path_origin_is_a_node(self) -> None:
+        self.assert_fail(self.mutate("| FAIL-001 | NODE-DB |", "| FAIL-001 | Aurora |"), "FAIL-001 の起点は NODE- でなければなりません")
+        self.assert_fail(self.mutate("| FAIL-001 | NODE-DB |", "| FAIL-001 | NODE-CACHE |"), "参照が未解決です: NODE-CACHE")
 
-        # 反例: 旧形の来歴keyは受理しない。
-        legacy_shape = self.load("success.json")
-        legacy_shape["provider_decision"] = {
-            "provider": "aws",
-            "source_artifact_id": "SRC-008",
-            "config_locator": "/evidence/system-design.config.yml",
-            "config_fingerprint": "sha256:provider-aws-001",
-        }
-        result = self.check_temporary(legacy_shape)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("keys", result.stderr)
+    def test_adr_state_vocabulary(self) -> None:
+        self.assert_fail(self.mutate("失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | hypothesis |", "失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | accepted |"), "ADR-001.状態 の根拠状態は")
 
-        # 反例: provider公開入力化より前の正本（top-level provider_resolution）は、
-        # schema_version 2のままでも、何が変わったかを示す診断で拒否する。
-        pre_change = self.load("success.json")
-        pre_change["provider_resolution"] = pre_change.pop("provider_decision")
-        result = self.check_temporary(pre_change)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("provider公開入力化より前の形", result.stderr)
-        self.assertIn("provider_decision", result.stderr)
+    def test_upstream_reference_and_missing_upstream(self) -> None:
+        self.assert_fail(self.mutate("| REQ-001 | agreed_decision | 申請者が確定した", "| REQ-002 | agreed_decision | 申請者が確定した"), "上流参照が未解決です: REQ-002")
+        self.arguments = ["--provider", "aws"]
+        self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")
 
-        # 反例: provider選定のproviderが入力providerと違う。
-        mismatch = self.load("success.json")
-        next(item for item in mismatch["selections"] if item["category"] == "provider")[
-            "provider"
-        ] = "gcp"
-        result = self.check_temporary(mismatch)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("入力provider", result.stderr)
-
-        # 境界例: 制約は存在するがprovider選定が引用しない。
-        untraced = self.load("success.json")
-        selection = next(
-            item for item in untraced["selections"] if item["category"] == "provider"
-        )
-        selection["constraint_ids"].remove("CON-004")
-        result = self.check_temporary(untraced)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("provider constraint", result.stderr)
-
-    def test_fixture_matrix_covers_deployment_boundaries(self) -> None:
-        scenarios = self.load("cases.json")["scenarios"]
-        self.assertEqual(
-            {scenario["kind"] for scenario in scenarios},
-            {"success", "out_of_scope", "boundary"},
-        )
-        boundary_modes = {
-            scenario["expected"]["changed_mode"]
-            for scenario in scenarios
-            if scenario["kind"] == "boundary"
-        }
-        self.assertEqual(
-            boundary_modes,
-            {"multi_cloud", "hybrid", "on_prem", "cloud_undecided"},
-        )
-        success = next(
-            scenario for scenario in scenarios if scenario["kind"] == "success"
-        )
-        self.assertEqual(success["input"]["provider"], "aws")
-        self.assertEqual(success["expected"]["provider"], "aws")
-        self.assertEqual(success["expected"]["provider_constraint_id"], "CON-004")
-        undecided = next(
-            scenario
-            for scenario in scenarios
-            if scenario["id"] == "cloud-undecided-boundary"
-        )
-        self.assertEqual(undecided["expected"]["state"], "saved_with_open_questions")
-        self.assertEqual(undecided["expected"]["must_not"], "人気だけでプロバイダーを選ばない")
-
-    def test_selected_service_requires_all_grounding_dimensions(self) -> None:
-        fields = (
-            "requirement_driver_ids",
-            "quality_driver_ids",
-            "workload_driver_ids",
-            "constraint_ids",
-            "alternative_ids",
-            "adr_ids",
-            "verification_ids",
-        )
-        for field in fields:
-            with self.subTest(field=field):
-                artifact = self.load("success.json")
-                artifact["selections"][0][field] = []
-                result = self.check_temporary(artifact)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn(field, result.stderr)
-
-    def test_popular_provider_list_without_grounding_is_rejected(self) -> None:
-        artifact = self.load("success.json")
-        provider = artifact["selections"][0]
-        provider["rationale"] = "popular provider and standard service"
-        provider["quality_driver_ids"] = []
-        provider["workload_driver_ids"] = []
-        provider["constraint_ids"] = []
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("quality_driver_ids", result.stderr)
-
-    def test_traceability_must_match_selection(self) -> None:
-        artifact = self.load("success.json")
-        artifact["traceability"][0]["workload_driver_ids"] = []
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("traceability.workload_driver_ids", result.stderr)
-
-    def test_diagram_exposes_boundary_flow_dependency_and_availability(self) -> None:
-        artifact = self.load("success.json")
-        diagram = artifact["diagram"]
-        self.assertEqual(
-            {item["kind"] for item in diagram["boundaries"]},
-            {"system", "trust_zone", "external"},
-        )
-        self.assertEqual({item["synchrony"] for item in diagram["flows"]}, {"sync", "async"})
-        self.assertTrue(any(item["trust_boundary_crossing"] for item in diagram["flows"]))
-        self.assertTrue(diagram["external_dependencies"])
-        self.assertTrue(diagram["availability_units"])
-
-    def test_missing_diagram_semantics_are_rejected(self) -> None:
-        mutations = []
-
-        no_external = self.load("success.json")
-        no_external["diagram"]["external_dependencies"] = []
-        mutations.append((no_external, "external_dependencies"))
-
-        no_async = self.load("success.json")
-        for flow in no_async["diagram"]["flows"]:
-            flow["synchrony"] = "sync"
-        mutations.append((no_async, "syncとasync"))
-
-        no_crossing = self.load("success.json")
-        for flow in no_crossing["diagram"]["flows"]:
-            flow["trust_boundary_crossing"] = False
-        mutations.append((no_crossing, "trust_boundary_crossing"))
-
-        missing_source_id = self.load("success.json")
-        missing_source_id["diagram"]["source"] = missing_source_id["diagram"]["source"].replace(
-            "FLW-005", "FLOW-FIVE"
-        )
-        mutations.append((missing_source_id, "FLW-005"))
-
-        comment_only_availability = self.load("success.json")
-        comment_only_availability["diagram"]["source"] = comment_only_availability[
-            "diagram"
-        ]["source"].replace(
-            'subgraph AU001["AU-001 リージョン入口単位"]',
-            'subgraph HIDDEN001["リージョン入口単位"]\n      %% AU-001 リージョン入口単位',
-        )
-        mutations.append(
-            (comment_only_availability, "表示可用性単位")
-        )
-
-        missing_display_node = self.load("success.json")
-        missing_display_node["diagram"]["source"] = missing_display_node["diagram"]["source"].replace(
-            'NOD006["NOD-006 データベース"]',
-            '%% NOD-006 データベース',
-        )
-        mutations.append((missing_display_node, "表示ノード"))
-
-        wrong_display_endpoint = self.load("success.json")
-        wrong_display_endpoint["diagram"]["source"] = wrong_display_endpoint["diagram"]["source"].replace(
-            'NOD013 -->|"FLW-001', 'NOD012 -->|"FLW-001',
-        )
-        mutations.append((wrong_display_endpoint, "表示フロー接続先"))
-
-        wrong_display_synchrony = self.load("success.json")
-        wrong_display_synchrony["diagram"]["source"] = wrong_display_synchrony["diagram"]["source"].replace(
-            'FLW-004 変更イベント / 非同期', 'FLW-004 変更イベント / 同期',
-        )
-        mutations.append((wrong_display_synchrony, "表示フロー種別"))
-
-        for artifact, message in mutations:
-            with self.subTest(message=message):
-                result = self.check_temporary(artifact)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn(message, result.stderr)
-
-    def test_deployment_mode_provider_scope_boundaries_are_enforced(self) -> None:
-        changes = (
-            ("single_cloud", ["aws", "gcp"]),
-            ("multi_cloud", ["aws"]),
-            ("on_prem", ["aws"]),
-            ("cloud_undecided", ["aws"]),
-        )
-        for mode, providers in changes:
-            with self.subTest(mode=mode):
-                artifact = self.load("success.json")
-                artifact["deployment_model"]["mode"] = mode
-                artifact["deployment_model"]["provider_scope"] = providers
-                result = self.check_temporary(artifact)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn("provider_scope", result.stderr)
-
-    def test_cloud_undecided_cannot_keep_selected_services(self) -> None:
-        artifact = self.load("success.json")
-        artifact["deployment_model"].update(
-            {
-                "mode": "cloud_undecided",
-                "provider_scope": [],
-                "decision_state": "unresolved",
-                "alternative_id": None,
-                "open_question_ids": ["OQ-ARCH-001"],
-            }
-        )
-        chosen = next(item for item in artifact["alternatives"] if item["status"] == "chosen")
-        chosen["status"] = "deferred"
-        chosen["rejection_reason"] = "provider decision is open"
-        artifact["open_questions"] = [
-            {
-                "id": "OQ-ARCH-001",
-                "question": "which provider constraints are agreed",
-                "owner": "architecture sponsor",
-                "affected_refs": ["SEL-001", "ALT-001"],
-                "blocks": ["implementation_handoff"],
-                "state": "open",
-                "resolution": None,
-                "reason": "回答待ち",
-            }
-        ]
-        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
-        artifact["artifact"]["state"] = "saved_with_open_questions"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("cloud_undecidedでserviceをselected", result.stderr)
-
-    def test_cloud_undecided_saves_candidate_design_as_not_ready(self) -> None:
-        artifact = self.load("success.json")
-        artifact["artifact"]["state"] = "saved_with_open_questions"
-        artifact["deployment_model"].update(
-            {
-                "mode": "cloud_undecided",
-                "provider_scope": [],
-                "decision_state": "unresolved",
-                "alternative_id": None,
-                "open_question_ids": ["OQ-ARCH-001"],
-            }
-        )
-        for alternative in artifact["alternatives"]:
-            alternative["status"] = "deferred"
-            if alternative["rejection_reason"] is None:
-                alternative["rejection_reason"] = "provider decision is open"
-        for selection in artifact["selections"]:
-            selection["status"] = "unresolved"
-            selection["choice"] = None
-            selection["provider"] = None
-            selection["service"] = None
-            selection["open_question_ids"] = ["OQ-ARCH-001"]
-        artifact["adrs"][0]["status"] = "proposed"
-        for node in artifact["diagram"]["nodes"]:
-            if node["kind"] == "component":
-                node["kind"] = "candidate"
-        artifact["traceability"] = []
-        artifact["open_questions"] = [
-            {
-                "id": "OQ-ARCH-001",
-                "question": "which provider and service constraints are agreed",
-                "owner": "architecture sponsor",
-                "affected_refs": ["SEL-001", "ALT-001"],
-                "blocks": ["implementation_handoff"],
-                "state": "open",
-                "resolution": None,
-                "reason": "回答待ち",
-            }
-        ]
-        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_adr_requires_comparison_and_negative_tradeoff(self) -> None:
-        artifact = self.load("success.json")
-        artifact["adrs"][0]["alternative_ids"] = ["ALT-001"]
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("比較のため2件以上", result.stderr)
-
-        artifact = self.load("success.json")
-        artifact["adrs"][0]["negative_consequences"] = []
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("negative_consequences", result.stderr)
-
-    def test_planned_verification_cannot_claim_passed_without_evidence(self) -> None:
-        artifact = self.load("success.json")
-        artifact["verification_plan"][0]["status"] = "passed"
-        result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("evidence_refs", result.stderr)
-
-    def test_write_refuses_implicit_overwrite_and_accepts_next_version(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            repo = base / "repository"
-            repo.mkdir()
-            source = base / "source.json"
-            self.write(source, self.load("success.json"))
-            first = self.call(
-                SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
-            )
-            self.assertEqual(first.returncode, 0, first.stderr)
-            self.assertEqual(first.stderr, "")
-
-            duplicate = self.call(
-                SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
-            )
-            self.assertEqual(duplicate.returncode, 2)
-            self.assertIn("--expected-version", duplicate.stderr)
-
-            update = self.load("success.json")
-            update["artifact"]["version"] = 2
-            update["change_log"].append(
-                {
-                    "version": 2,
-                    "changed_input_ids": ["SRC-003"],
-                    "invalidated_refs": ["SEL-003", "ADR-001", "VER-001"],
-                    "summary": "workload version changed",
-                }
-            )
-            update_path = base / "update.json"
-            self.write(update_path, update)
-            replaced = self.call(
-                SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status",
-                "--file", update_path.resolve(), "--expected-version", "1",
-            )
-            self.assertEqual(replaced.returncode, 0, replaced.stderr)
-            target = repo / "system-design/architectures/status.architecture.json"
-            self.assertEqual(json.loads(target.read_text())["artifact"]["version"], 2)
-
-    def test_package_copy_has_no_source_checkout_dependency(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied = base / "system-design"
-            shutil.copytree(ROOT / "plugins/system-design", copied)
-            artifact = base / "architecture.json"
-            self.write(artifact, self.load("success.json"))
-            copied_script = copied / "skills/design-cloud-architecture/scripts/architecture.py"
-            result = self.call(copied_script, "check", "--file", artifact.resolve())
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stderr, "")
+    def test_status_ready_requires_accepted_adr_and_no_open_question(self) -> None:
+        body = self.body()
+        body = body.replace("| バックアップ/DR | 未決 | 同一リージョン内スナップショット、大阪への複製 | QR-001、ARC-OQ-001 | 該当なし | リージョン障害時の復旧目標が決まるまで方式を選べない | open_question |", "| バックアップ/DR | 同一リージョン内スナップショット | 大阪への複製 | QR-001 | 運用対象を増やさない | リージョン障害には耐えない | hypothesis |")
+        body = body.replace("失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | hypothesis |", "失うのはリージョン障害への継続性 | 復旧目標が単一リージョンでは満たせない値になったとき | agreed_decision |")
+        head, rest = body.split("## 仮説と未決\n", 1)
+        tail = rest.split("## この資料に書かないもの\n", 1)[1]
+        body = head + "## 仮説と未決\n\n| ID | 根拠状態 | 内容 | 設計感度 | 検証計画 | 影響先 |\n|---|---|---|---|---|---|\n| ARC-HYP-001 | hypothesis | 単一リージョン・複数AZで `QR-001` を満たせる | 入口とデータベースの可用性単位 | 障害注入と月額費用を検証する | ADR-001、NODE-EDGE、NODE-DB |\n\n## この資料に書かないもの\n" + tail
+        body = body.replace("集中倍率（`WL-OQ-001`）と確認経路（`REQ-OQ-001`）が未決なので、この構成は実装へ渡せる最終決定ではない。設計者と運用責任者は `ADR-001` を承認済みとして実装しない。", "設計者と運用責任者は `ADR-001` を承認済みとして実装へ渡す。")
+        body = body.replace("| REQ-OQ-001 | open_question | 確認経路が未決 | エッジ（通知製品を選ばない） |\n", "")
+        payload = self.assert_pass(body)
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["accepted_adrs"], ["ADR-001"])
 
 
 if __name__ == "__main__":
