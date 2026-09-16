@@ -1,0 +1,59 @@
+version: 2
+name: discover-workload-model
+description: 利用負荷モデルのJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
+inputs: [request, requirements_baseline, journey_or_domain_artifacts, document_destination]
+instructions:
+  execution:
+    directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+steps:
+  - id: fix-upstream-identity
+    agent_work: invoking_agent
+    purpose: "上流成果物と対象の同一性を固定する"
+  - id: separate-claims-and-states
+    agent_work: invoking_agent
+    purpose: "数値根拠主張と状態を分ける"
+  - id: attach-measurement-context
+    agent_work: invoking_agent
+    purpose: "すべての数値へ測定文脈を付け、無ければ推定を仮説として管理する"
+  - id: separate-average-peak-burst
+    agent_work: invoking_agent
+    purpose: "平均、ピーク、突発を別々に扱う"
+  - id: record-ratios-volume-retention-growth
+    agent_work: invoking_agent
+    purpose: "比率、データ量、保持、成長を記録する"
+  - id: record-distribution-and-hotspots
+    agent_work: invoking_agent
+    purpose: "偏りが操作頻度型か影響範囲型かを分け、分布、配信先数、集中キーを負荷特性として記録する"
+  - id: attach-sensitivity-and-verification
+    agent_work: invoking_agent
+    purpose: "設計感度と検証計画を付ける"
+  - id: connect-assumptions-to-design
+    agent_work: invoking_agent
+    purpose: "採用仮定を要件と構成判断へ接続し、設計入力として閉じる"
+  - id: confirm-question-inventory
+    agent_work: invoking_agent
+    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    provides: [question_review]
+  - id: validate-and-save-canonical
+    agent_work: invoking_agent
+    purpose: "scripts/workload.pyでJSON正本を検査して保存する"
+    needs: [question_review]
+    provides: [workload_artifact_path]
+  - id: compose-document-text
+    agent_work: invoking_agent
+    purpose: "保存したJSON正本と根拠資料から、採用する仮定を先頭に置いた日本語Markdown正本の本文を組み立てる"
+    needs: [workload_artifact_path]
+    provides: [workload_document_text]
+  - id: save-markdown-canonical
+    playbook: write-doc
+    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してworkload-model型の資料を1本保存する"
+    input:
+      document_type: workload-model
+    needs: [workload_document_text, document_destination]
+    provides: [workload_document_path]
+  - id: read-back-document
+    agent_work: invoking_agent
+    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、数値、未決、handoffが欠落・昇格していないことを確かめる"
+    needs: [workload_artifact_path, workload_document_path]

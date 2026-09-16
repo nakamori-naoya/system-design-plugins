@@ -49,6 +49,8 @@
 
 ## 分布と増幅
 
+負荷の偏りは、増える理由で二つに分けてから記録する。短時間の操作集中で共有能力を占有する偏りは操作頻度型であり、`average_rate`、`peak_rate`、`burst_rate`の到着率で表す。一操作から生じる処理増幅を通常経路へ流してしまう偏りは影響範囲型であり、`fan_out`と`hot_key_share`で表す。操作回数が少ない発生元でも配信先数が大きければ影響範囲型であり、操作頻度の上限だけでは抑えられない。分類名は対象サービスの言葉で中立に書き、利用者を不正と決めつける呼称や英語識別子をそのまま読み手向け資料へ出さない。
+
 `distribution`は状態、形状、偏りの軸、要約、根拠主張、確からしさ、検証計画、設計感度、未決の問いを持つ。`shape=uniform`は分布を測定した根拠主張がある場合だけ使う。データがなければ`shape=unknown`、statusを未決にする。
 
 配信先数は一つの発生元の行為/イベントから生じる配信先数であり、`targets/source-event`等で測る。集中キー割合はキーまたはキー群に集中する負荷割合であり、キーの軸、母集団、時間窓とともに測る。どちらもキャッシュ、キュー、分割単位、データベースの採用決定ではない。
@@ -85,7 +87,7 @@
 
 ## 正本スキーマ
 
-スキーマ1の最上位キーは次の9件だけにする。スキーマ2は同じ9件に`design_inputs`と`terminology`を加える。
+正本は`schema_version=2`とし、最上位キーは次の12件だけにする。
 
 - `schema_version`
 - `artifact`
@@ -94,8 +96,11 @@
 - `workload_items`
 - `sensitivities`
 - `open_questions`
+- `question_review`
 - `handoff`
 - `change_log`
+- `design_inputs`
+- `terminology`
 
 `artifact`は`id`、`version`、`subject`、`state`を持つ。`input_artifacts`は`id`、`kind`、`locator`、`version_or_hash`、`observed_at`を持つ。`claims`は`id`、`statement`、`classification`、`source_artifact_id`、`locator`、`observed_at`、`characteristic`を持つ。
 
@@ -136,12 +141,12 @@
 }
 ```
 
-`sensitivities`は`id`、`workload_item_id`、`characteristic`、`condition`、`affected_decision`、`validation_trigger`を持つ。`open_questions`は`id`、`question`、`owner`、`affected_refs`、`blocks`を持つ。
+`sensitivities`は`id`、`workload_item_id`、`characteristic`、`condition`、`affected_decision`、`validation_trigger`を持つ。`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。
 
 `handoff`は`ready`、`blocking_question_ids`、`downstream`を持ち、後続は`quality`と`cloud_design`の配列である。作業を止める問いがあれば`ready=false`、成果物 状態は`saved_with_open_questions`にする。なければ`ready=true`、状態は`ready_for_downstream`にする。
 
 `change_log`は初版を含む版ごとに、`version`、`changed_input_ids`、`invalidated_refs`、`summary`を持つ。ユーザージャーニー/ドメインの版変更時に、以前の値を黙って流用しない。
 
-`schema_version=1`は既存正本の互換読取に使う。新規成果物は`schema_version=2`とし、`design_inputs`を1件以上持つ。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、負荷項目・設計入力から日本語の推奨用語名への参照だけを持ち、用語IDや用語正本IDを要求せず、定義本文を複製しない。用語正本は表にせず、アクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念の見出しで概念種別を明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を区別し、業務上の対象・関係・情報、負荷を増幅する性質、測定値も区別する。スキーマ1から移行するときは、採用仮定の適用範囲、外部要求ID、構成上の関心、見直し条件、適用外、共有用語参照を補い、成果物版と`change_log`を更新する。
+`schema_version`は2だけを受理し、`design_inputs`を1件以上持つ。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、負荷項目・設計入力から日本語の推奨用語名への参照だけを持ち、用語IDや用語正本IDを要求せず、定義本文を複製しない。用語正本は表にせず、アクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念の見出しで概念種別を明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を区別し、業務上の対象・関係・情報、負荷を増幅する性質、測定値も区別する。旧版を現行正本として読取り、更新、変換する経路は持たない。
 
-分類例では、投稿・フォロー関係・ホームタイムラインは業務上の概念、ファンアウトや操作頻度型は負荷特性、平均負荷は値・指標である。負荷特性は数値そのものではなく、何が処理量を増幅または集中させるかを表す。この分類例を対象サービスの既定用語や既定閾値にはしない。
+分類例では、注文・会員関係・注文履歴は業務上の概念、一操作あたりの配信先数の増幅や操作頻度の集中は負荷特性、平均負荷は値・指標である。負荷特性は数値そのものではなく、何が処理量を増幅または集中させるかを表す。この分類例を対象サービスの既定用語や既定閾値にはしない。

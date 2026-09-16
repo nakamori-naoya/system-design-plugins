@@ -1,21 +1,17 @@
 version: 2
 name: design-cloud-architecture
-description: クラウドアーキテクチャとMarkdown正本を同じagentが宣言順に作る。
-inputs: [request, requirements_baseline, logical_design, workload_model, quality_requirements, organizational_constraints, document_destination]
+description: クラウドアーキテクチャのJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
+inputs: [request, provider, requirements_baseline, logical_design, workload_model, quality_requirements, organizational_constraints, document_destination]
 instructions:
   execution:
-    directive: 同じagentがstepsを上から順に実行する。provider設定は外部供給なら非所有として保持し、生成した場合だけ一時設定をcleanupする。生成後に失敗または停止した場合もcleanup-provider-configurationだけを実行してから報告し、失敗工程を成功扱いしない
-requires: []
+    directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
 steps:
-  - id: resolve-provider-configuration
-    script: scripts/prepare-provider-configuration.sh
-    purpose: "公開request objectを検査し、完全なprovider_resolutionはexternal_inputとして変更せず返し、無い場合だけtarget_repositoryを既存runtimeへ渡して生成し、正規化した設定値・ownership・所有時だけ存在する一時設定pathを返す"
-    needs: [request]
-    provides: [resolved_provider_configuration, provider_configuration_ownership, transient_provider_configuration_path]
   - id: fix-upstream-evidence
     agent_work: invoking_agent
-    purpose: "上流基準資料と設計根拠を固定する"
-    needs: [resolved_provider_configuration]
+    purpose: "上流基準資料、入力providerの根拠制約、設計根拠を固定する"
+    needs: [provider]
   - id: decide-deployment-boundary
     agent_work: invoking_agent
     purpose: "配置方式の境界を判定する"
@@ -40,19 +36,22 @@ steps:
     provides: [question_review]
   - id: validate-and-save-canonical
     agent_work: invoking_agent
-    purpose: "正本を検査して保存する"
-    needs: [resolved_provider_configuration, question_review]
+    purpose: "scripts/architecture.pyでJSON正本を検査して保存する"
+    needs: [question_review]
     provides: [architecture_artifact_path]
-  - id: save-markdown-canonical
+  - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "日本語Markdown正本を直接保存する"
+    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を組み立てる"
     needs: [architecture_artifact_path]
+    provides: [architecture_document_text]
+  - id: save-markdown-canonical
+    playbook: write-doc
+    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してcloud-architecture型の資料を1本保存する"
+    input:
+      document_type: cloud-architecture
+    needs: [architecture_document_text, document_destination]
     provides: [architecture_document_path]
-  - id: cleanup-provider-configuration
-    script: scripts/cleanup-provider-configuration.sh
-    purpose: "ownershipを分岐条件にし、generated_by_this_skillでは所有する一時設定だけを既存runtimeでcleanupし、external_inputではcleanup runtimeを呼ばずpreserved_external_inputを返す"
-    needs: [provider_configuration_ownership]
-    conditional_needs:
-      - when: provider_configuration_ownership == generated_by_this_skill
-        needs: [transient_provider_configuration_path]
-    provides: [provider_cleanup_status]
+  - id: read-back-document
+    agent_work: invoking_agent
+    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、ADR、図、未決、handoffが欠落・昇格していないことを確かめる"
+    needs: [architecture_artifact_path, architecture_document_path]

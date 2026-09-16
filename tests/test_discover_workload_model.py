@@ -28,7 +28,16 @@ class WorkloadContractTest(unittest.TestCase):
         )
 
     def load(self, name: str) -> dict:
-        return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        if value.get("schema_version") == 2:
+            for item in value["open_questions"]:
+                item.update(state="open", resolution=None, reason="未決として一覧確認した")
+            value["question_review"] = {
+                "question_ids": [item["id"] for item in value["open_questions"]],
+                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
+                "dialogue_complete": True,
+            }
+        return value
 
     def write(self, path: Path, value: dict) -> None:
         path.write_text(
@@ -44,11 +53,20 @@ class WorkloadContractTest(unittest.TestCase):
         return self.call(SCRIPT, "check", "--file", path.resolve())
 
     def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        path = (FIXTURES / "success.json").resolve()
-        result = self.call(SCRIPT, "check", "--file", path)
+        result = self.check_temporary(self.load("success.json"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
-        self.assertEqual(result.stdout.strip(), str(path))
+
+    def test_resolved_withdrawn_and_confirmation_are_distinct(self) -> None:
+        artifact = self.load("success.json")
+        artifact["open_questions"] = [
+            {"id": "OQ-WL-998", "question": "解決済み", "owner": "利用者", "affected_refs": ["WL-001.average_rate"], "blocks": ["quality"], "state": "resolved", "resolution": "確定値", "reason": "合意済み"},
+            {"id": "OQ-WL-999", "question": "撤回済み", "owner": "利用者", "affected_refs": ["WL-001.average_rate"], "blocks": ["quality"], "state": "withdrawn", "resolution": None, "reason": "対象外と合意"},
+        ]
+        artifact["question_review"]["question_ids"] = ["OQ-WL-998", "OQ-WL-999"]
+        self.assertEqual(self.check_temporary(artifact).returncode, 0)
+        artifact["open_questions"][1]["resolution"] = "誤った解決扱い"
+        self.assertEqual(self.check_temporary(artifact).returncode, 2)
 
     def test_success_covers_average_peak_burst_growth_and_skew(self) -> None:
         artifact = self.load("success.json")
@@ -64,14 +82,15 @@ class WorkloadContractTest(unittest.TestCase):
         self.assertIn("REQ-ORDER-001", design_input["requirement_refs"])
         self.assertIn("capacity", design_input["architecture_concerns"])
 
-    def test_schema_one_remains_accepted_during_migration(self) -> None:
+    def test_schema_one_is_rejected_without_migration_path(self) -> None:
         artifact = self.load("success.json")
         artifact["schema_version"] = 1
         del artifact["design_inputs"]
         del artifact["terminology"]
         artifact["handoff"]["downstream"]["cloud_design"].remove("DIN-001")
         result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("schema_versionは2", result.stderr)
 
     def test_schema_two_rejects_research_without_design_connection(self) -> None:
         artifact = self.load("success.json")
@@ -99,6 +118,31 @@ class WorkloadContractTest(unittest.TestCase):
         self.assertEqual(boundary["expected"]["changed_status"], "unresolved")
         self.assertIsNone(boundary["expected"]["changed_value"])
 
+    def test_estimate_without_public_value_is_a_hypothesis_with_formula_confidence_and_verification(self) -> None:
+        # 正例: 公開値が無い指標を、式・入力・確からしさ・検証計画・設計感度付きの仮説として持つ。
+        artifact = self.load("success.json")
+        growth = artifact["workload_items"][0]["characteristics"]["growth_rate"]
+        self.assertEqual(growth["status"], "hypothesis")
+        self.assertTrue(growth["calculation"])
+        self.assertNotEqual(growth["confidence"], "unknown")
+        self.assertTrue(growth["verification_plan"])
+        self.assertTrue(growth["sensitivity"])
+        self.assertEqual(self.check_temporary(artifact).returncode, 0)
+
+        # 反例: 式が無い推定値を仮説として受理しない。
+        no_formula = self.load("success.json")
+        no_formula["workload_items"][0]["characteristics"]["growth_rate"]["calculation"] = ""
+        result = self.check_temporary(no_formula)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("calculation", result.stderr)
+
+        # 境界例: 確からしさがunknownの推定は仮説にならない。
+        unknown_confidence = self.load("success.json")
+        unknown_confidence["workload_items"][0]["characteristics"]["growth_rate"]["confidence"] = "unknown"
+        result = self.check_temporary(unknown_confidence)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("confidence", result.stderr)
+
     def test_missing_time_window_is_valid_only_when_metric_becomes_unresolved(self) -> None:
         artifact = self.load("success.json")
         average = artifact["workload_items"][0]["characteristics"]["average_rate"]
@@ -119,8 +163,12 @@ class WorkloadContractTest(unittest.TestCase):
                 "owner": "計測責任者",
                 "affected_refs": ["WL-001.average_rate"],
                 "blocks": ["quality", "cloud_design"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-WL-001"]
         artifact["artifact"]["state"] = "saved_with_open_questions"
         artifact["handoff"]["ready"] = False
         artifact["handoff"]["blocking_question_ids"] = ["OQ-WL-001"]
@@ -198,7 +246,8 @@ class WorkloadContractTest(unittest.TestCase):
             base = Path(temporary)
             repo = base / "repository"
             repo.mkdir()
-            source = (FIXTURES / "success.json").resolve()
+            source = base / "source.json"
+            self.write(source, self.load("success.json"))
             first = self.call(
                 SCRIPT,
                 "write",
@@ -259,7 +308,7 @@ class WorkloadContractTest(unittest.TestCase):
             copied = base / "system-design"
             shutil.copytree(ROOT / "plugins/system-design", copied)
             artifact = base / "workload.json"
-            shutil.copy2(FIXTURES / "success.json", artifact)
+            self.write(artifact, self.load("success.json"))
             copied_script = copied / "skills/discover-workload-model/scripts/workload.py"
             result = self.call(
                 copied_script,

@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -18,9 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "plugins/system-design"
 SKILL_ROOT = PACKAGE_ROOT / "skills/design-cloud-architecture"
 SCRIPT = SKILL_ROOT / "scripts/architecture.py"
-PREPARE = PACKAGE_ROOT / "scripts/prepare.sh"
 FIXTURES = ROOT / "tests/fixtures/design-cloud-architecture"
-CONFIG_FIXTURES = ROOT / "tests/fixtures/runtime-config"
 CAPABILITIES = {
     "provider", "region_az", "compute", "network", "storage", "database",
     "messaging", "identity", "edge", "observability", "backup_dr", "delivery",
@@ -31,45 +27,6 @@ class ArchitectureContractTest(unittest.TestCase):
     def call(self, script: Path, *arguments: object) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["python3", str(script), *[str(argument) for argument in arguments]],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    def prepare_provider(
-        self, request: dict, package_root: Path = PACKAGE_ROOT
-    ) -> subprocess.CompletedProcess[str]:
-        entry = (
-            package_root
-            / "skills/design-cloud-architecture/scripts/prepare-provider-configuration.sh"
-        )
-        return subprocess.run(
-            [
-                "bash",
-                str(entry),
-                "--request-json",
-                json.dumps(request, ensure_ascii=False),
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-    def cleanup_provider(
-        self,
-        ownership: str,
-        transient_path: Path | None = None,
-        package_root: Path = PACKAGE_ROOT,
-    ) -> subprocess.CompletedProcess[str]:
-        entry = (
-            package_root
-            / "skills/design-cloud-architecture/scripts/cleanup-provider-configuration.sh"
-        )
-        arguments = ["bash", str(entry), ownership]
-        if transient_path is not None:
-            arguments.append(str(transient_path))
-        return subprocess.run(
-            arguments,
             text=True,
             capture_output=True,
             check=False,
@@ -135,323 +92,71 @@ class ArchitectureContractTest(unittest.TestCase):
         self.assertTrue(artifact["failure_scenarios"])
         self.assertTrue(artifact["verification_plan"])
 
-    def test_generated_provider_configuration_is_owned_and_cleaned(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied_package = base / "system-design"
-            shutil.copytree(PACKAGE_ROOT, copied_package)
-            repo = base / "repository"
-            settings = repo / ".harness-plugins"
-            settings.mkdir(parents=True)
-            config = settings / "system-design.config.yml"
-            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            prepared = self.prepare_provider(
-                {"target_repository": str(repo.resolve())}, copied_package
-            )
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            result = json.loads(prepared.stdout)
-            self.assertEqual(
-                result["provider_configuration_ownership"],
-                "generated_by_this_skill",
-            )
-            resolved = Path(result["transient_provider_configuration_path"])
-            self.assertTrue(resolved.is_absolute())
-            resolution = result["resolved_provider_configuration"]
-            self.assertEqual(resolution["provider"], "aws")
-            self.assertEqual(
-                resolution["config_locator"],
-                str(config.resolve()),
-            )
-            self.assertRegex(
-                resolution["config_fingerprint"], r"^sha256:[0-9a-f]{64}$"
-            )
-            cleaned = self.cleanup_provider(
-                result["provider_configuration_ownership"], resolved, copied_package
-            )
-            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-            self.assertEqual(
-                json.loads(cleaned.stdout)["provider_cleanup_status"], "completed"
-            )
-            self.assertFalse(resolved.parent.exists())
-            self.assertTrue(config.is_file())
-
-            artifact = self.load("success.json")
-            source_id = artifact["provider_resolution"]["source_artifact_id"]
-            source = next(item for item in artifact["input_artifacts"] if item["id"] == source_id)
-            source["locator"] = str(config.resolve())
-            source["version_or_hash"] = resolution["config_fingerprint"]
-            artifact["provider_resolution"]["config_locator"] = str(config.resolve())
-            artifact["provider_resolution"]["config_fingerprint"] = resolution["config_fingerprint"]
-            checked = self.check_temporary(artifact)
-            self.assertEqual(checked.returncode, 0, checked.stderr)
-
-    def test_external_provider_configuration_is_preserved_without_runtime_cleanup(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            config = Path(temporary) / "external-provider.yml"
-            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            fingerprint = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
-            supplied = {
-                "provider": "aws",
-                "config_locator": str(config.resolve()),
-                "config_fingerprint": fingerprint,
-            }
-            prepared = self.prepare_provider(
-                {
-                    "provider_resolution": supplied,
-                    "target_repository": "/unused/because/external-input-wins",
-                }
-            )
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            result = json.loads(prepared.stdout)
-            self.assertEqual(result["resolved_provider_configuration"], supplied)
-            self.assertEqual(result["provider_configuration_ownership"], "external_input")
-            self.assertIsNone(result["transient_provider_configuration_path"])
-
-            cleaned = self.cleanup_provider(result["provider_configuration_ownership"])
-            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-            self.assertEqual(
-                json.loads(cleaned.stdout)["provider_cleanup_status"],
-                "preserved_external_input",
-            )
-            self.assertTrue(config.is_file())
-
-    def test_external_provider_must_match_the_selected_config_content(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            config = Path(temporary) / "external-provider.yml"
-            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            fingerprint = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
-            prepared = self.prepare_provider(
-                {
-                    "provider_resolution": {
-                        "provider": "gcp",
-                        "config_locator": str(config.resolve()),
-                        "config_fingerprint": fingerprint,
-                    }
-                }
-            )
-            self.assertEqual(prepared.returncode, 2)
-            self.assertEqual(prepared.stdout, "")
-            self.assertIn("cloud.providerと一致しない", prepared.stderr)
-            self.assertTrue(config.is_file())
-
-    def test_generated_configuration_is_cleaned_after_downstream_failure(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            repo = Path(temporary) / "repository"
-            settings = repo / ".harness-plugins"
-            settings.mkdir(parents=True)
-            config = settings / "system-design.config.yml"
-            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            prepared = self.prepare_provider({"target_repository": str(repo.resolve())})
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            result = json.loads(prepared.stdout)
-            resolved = Path(result["transient_provider_configuration_path"])
-
-            # 後続工程が失敗した状態を模し、認知工程を進めずcleanupだけを呼ぶ。
-            cleaned = self.cleanup_provider(
-                result["provider_configuration_ownership"], resolved
-            )
-            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-            self.assertFalse(resolved.parent.exists())
-            self.assertTrue(config.is_file())
-
-    def test_cleanup_failure_is_reported_without_claiming_completion(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            repo = Path(temporary) / "repository"
-            settings = repo / ".harness-plugins"
-            settings.mkdir(parents=True)
-            shutil.copy2(
-                CONFIG_FIXTURES / "aws.config.yml",
-                settings / "system-design.config.yml",
-            )
-            prepared = self.prepare_provider({"target_repository": str(repo.resolve())})
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            result = json.loads(prepared.stdout)
-            resolved = Path(result["transient_provider_configuration_path"])
-            unexpected = resolved.parent / "unexpected.txt"
-            unexpected.write_text("do not delete unknown run files", encoding="utf-8")
-
-            failed = self.cleanup_provider(
-                result["provider_configuration_ownership"], resolved
-            )
-            self.assertEqual(failed.returncode, 2)
-            self.assertEqual(failed.stdout, "")
-            self.assertIn("cleanupに失敗", failed.stderr)
-            self.assertTrue(resolved.parent.is_dir())
-
-            unexpected.unlink()
-            recovered = self.cleanup_provider(
-                result["provider_configuration_ownership"], resolved
-            )
-            self.assertEqual(recovered.returncode, 0, recovered.stderr)
-            self.assertFalse(resolved.parent.exists())
-
-    def test_prepare_validation_failure_keeps_failure_after_successful_cleanup(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied_package = base / "system-design"
-            shutil.copytree(PACKAGE_ROOT, copied_package)
-            repo = base / "repository"
-            repo.mkdir()
-            run_directory = base / "generated-run"
-            run_directory.mkdir()
-            resolved = run_directory / "resolved.yml"
-            resolved.write_text(
-                "cloud:\n  provider: aws\nresolution: {}\n", encoding="utf-8"
-            )
-            (run_directory / "run.json").write_text(
-                json.dumps(
-                    {"schema": 1, "config": str(resolved), "uid": os.getuid()}
-                ),
-                encoding="utf-8",
-            )
-            runtime = copied_package / "scripts/prepare.sh"
-            runtime.write_text(
-                "#!/usr/bin/env bash\nprintf '%s\\n' "
-                + repr(str(resolved))
-                + "\n",
-                encoding="utf-8",
-            )
-            runtime.chmod(0o755)
-
-            prepared = self.prepare_provider(
-                {"target_repository": str(repo.resolve())}, copied_package
-            )
-            self.assertEqual(prepared.returncode, 2)
-            self.assertEqual(prepared.stdout, "")
-            self.assertIn("来歴が不完全", prepared.stderr)
-            self.assertNotIn("provider設定cleanupに失敗", prepared.stderr)
-            self.assertFalse(run_directory.exists())
-
-    def test_prepare_reports_owned_path_when_validation_and_cleanup_both_fail(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied_package = base / "system-design"
-            shutil.copytree(PACKAGE_ROOT, copied_package)
-            repo = base / "repository"
-            repo.mkdir()
-            run_directory = base / "generated-run"
-            run_directory.mkdir()
-            resolved = run_directory / "resolved.yml"
-            resolved.write_text(
-                "cloud:\n  provider: aws\nresolution: {}\n", encoding="utf-8"
-            )
-            (run_directory / "run.json").write_text(
-                json.dumps(
-                    {"schema": 1, "config": str(resolved), "uid": os.getuid()}
-                ),
-                encoding="utf-8",
-            )
-            (run_directory / "unexpected.txt").write_text(
-                "preserve unknown run content", encoding="utf-8"
-            )
-            runtime = copied_package / "scripts/prepare.sh"
-            runtime.write_text(
-                "#!/usr/bin/env bash\nprintf '%s\\n' "
-                + repr(str(resolved))
-                + "\n",
-                encoding="utf-8",
-            )
-            runtime.chmod(0o755)
-
-            prepared = self.prepare_provider(
-                {"target_repository": str(repo.resolve())}, copied_package
-            )
-            self.assertEqual(prepared.returncode, 2)
-            self.assertEqual(prepared.stdout, "")
-            self.assertIn("来歴が不完全", prepared.stderr)
-            self.assertIn("provider設定cleanupに失敗", prepared.stderr)
-            self.assertIn(
-                "provider_configuration_ownership=generated_by_this_skill",
-                prepared.stderr,
-            )
-            self.assertIn(
-                "transient_provider_configuration_path=" + str(resolved),
-                prepared.stderr,
-            )
-            self.assertIn("unexpected run files; refusing cleanup", prepared.stderr)
-            self.assertTrue(run_directory.is_dir())
-
-    def test_runtime_config_rejects_missing_and_invalid_provider(self) -> None:
-        cases = (
-            ("provider-missing.config.yml", "自己完結していない"),
-            ("provider-invalid.config.yml", "不正"),
-        )
-        for fixture, message in cases:
-            with self.subTest(fixture=fixture), tempfile.TemporaryDirectory() as temporary:
-                repo = Path(temporary) / "repository"
-                settings = repo / ".harness-plugins"
-                settings.mkdir(parents=True)
-                shutil.copy2(
-                    CONFIG_FIXTURES / fixture,
-                    settings / "system-design.config.yml",
-                )
-                prepared = subprocess.run(
-                    ["bash", str(PREPARE), str(repo.resolve())],
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(prepared.returncode, 2)
-                self.assertIn(message, prepared.stderr)
-                self.assertEqual(prepared.stdout, "")
-
-    def test_resolved_provider_is_traced_and_mismatches_are_rejected(self) -> None:
+    def test_input_provider_is_traced_to_an_agreed_constraint_and_mismatches_are_rejected(self) -> None:
+        # 正例: 入力providerは合意済み制約（CON-）へ辿れ、provider選定がその制約を引用する。
         artifact = self.load("success.json")
-        source_id = artifact["provider_resolution"]["source_artifact_id"]
-        source = next(item for item in artifact["input_artifacts"] if item["id"] == source_id)
+        decision = artifact["provider_decision"]
+        constraint = next(item for item in artifact["constraints"] if item["id"] == decision["constraint_id"])
         provider_selection = next(
             item for item in artifact["selections"] if item["category"] == "provider"
         )
-        config_constraints = {
-            item["id"]
-            for item in artifact["constraints"]
-            if item["source_artifact_id"] == source_id
-        }
-        self.assertEqual(source["kind"], "runtime_config")
-        self.assertEqual(artifact["provider_resolution"]["provider"], "aws")
-        self.assertEqual(artifact["provider_resolution"]["config_locator"], source["locator"])
-        self.assertEqual(artifact["provider_resolution"]["config_fingerprint"], source["version_or_hash"])
+        self.assertEqual(decision["provider"], "aws")
+        self.assertEqual(constraint["classification"], "agreed_decision")
         self.assertEqual(provider_selection["provider"], "aws")
-        self.assertTrue(config_constraints & set(provider_selection["constraint_ids"]))
+        self.assertIn(decision["constraint_id"], provider_selection["constraint_ids"])
 
+        # 反例: aws/gcp以外のprovider。
         invalid_provider = self.load("success.json")
-        invalid_provider["provider_resolution"]["provider"] = "azure"
+        invalid_provider["provider_decision"]["provider"] = "azure"
         result = self.check_temporary(invalid_provider)
         self.assertEqual(result.returncode, 2)
         self.assertIn("awsまたはgcp", result.stderr)
 
-        wrong_source = self.load("success.json")
-        wrong_source["provider_resolution"]["source_artifact_id"] = "SRC-006"
-        result = self.check_temporary(wrong_source)
+        # 反例: 存在しない制約ID。
+        unknown_constraint = self.load("success.json")
+        unknown_constraint["provider_decision"]["constraint_id"] = "CON-999"
+        result = self.check_temporary(unknown_constraint)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("runtime_config", result.stderr)
+        self.assertIn("constraintsに存在しません", result.stderr)
 
-        wrong_path = self.load("success.json")
-        wrong_path["provider_resolution"]["config_locator"] = "/evidence/another-run.resolved.yml"
-        result = self.check_temporary(wrong_path)
+        # 反例: 仮説の制約をprovider根拠にする。
+        hypothesis_constraint = self.load("success.json")
+        hypothesis_constraint["provider_decision"]["constraint_id"] = "CON-003"
+        result = self.check_temporary(hypothesis_constraint)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("locator", result.stderr)
+        self.assertIn("agreed_decision", result.stderr)
 
-        wrong_fingerprint = self.load("success.json")
-        wrong_fingerprint["provider_resolution"]["config_fingerprint"] = "sha256:another-run"
-        result = self.check_temporary(wrong_fingerprint)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("設定指紋", result.stderr)
-
-        missing_provenance = self.load("success.json")
-        missing_provenance["provider_resolution"].pop("config_fingerprint")
-        result = self.check_temporary(missing_provenance)
+        # 反例: 旧形の来歴keyは受理しない。
+        legacy_shape = self.load("success.json")
+        legacy_shape["provider_decision"] = {
+            "provider": "aws",
+            "source_artifact_id": "SRC-008",
+            "config_locator": "/evidence/system-design.config.yml",
+            "config_fingerprint": "sha256:provider-aws-001",
+        }
+        result = self.check_temporary(legacy_shape)
         self.assertEqual(result.returncode, 2)
         self.assertIn("keys", result.stderr)
 
+        # 反例: provider公開入力化より前の正本（top-level provider_resolution）は、
+        # schema_version 2のままでも、何が変わったかを示す診断で拒否する。
+        pre_change = self.load("success.json")
+        pre_change["provider_resolution"] = pre_change.pop("provider_decision")
+        result = self.check_temporary(pre_change)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("provider公開入力化より前の形", result.stderr)
+        self.assertIn("provider_decision", result.stderr)
+
+        # 反例: provider選定のproviderが入力providerと違う。
         mismatch = self.load("success.json")
         next(item for item in mismatch["selections"] if item["category"] == "provider")[
             "provider"
         ] = "gcp"
         result = self.check_temporary(mismatch)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("解決provider", result.stderr)
+        self.assertIn("入力provider", result.stderr)
 
+        # 境界例: 制約は存在するがprovider選定が引用しない。
         untraced = self.load("success.json")
         selection = next(
             item for item in untraced["selections"] if item["category"] == "provider"
@@ -479,11 +184,9 @@ class ArchitectureContractTest(unittest.TestCase):
         success = next(
             scenario for scenario in scenarios if scenario["kind"] == "success"
         )
-        self.assertEqual(success["expected"]["resolved_provider"], "aws")
-        self.assertEqual(
-            success["expected"]["provider_source_artifact_id"],
-            "SRC-008",
-        )
+        self.assertEqual(success["input"]["provider"], "aws")
+        self.assertEqual(success["expected"]["provider"], "aws")
+        self.assertEqual(success["expected"]["provider_constraint_id"], "CON-004")
         undecided = next(
             scenario
             for scenario in scenarios

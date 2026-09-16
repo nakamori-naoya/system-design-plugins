@@ -76,6 +76,27 @@
         "changed_status": "research_material_only",
         "must_not": "調査結果の要約だけで利用負荷モデルを完了しない"
       }
+    },
+    {
+      "id": "workload-estimate-boundary",
+      "kind": "boundary",
+      "base": {
+        "condition": "公開値が無く、入力値と式から桁を推定した値を、確からしさ・検証計画・設計感度付きの仮説として持つ"
+      },
+      "one_change": {
+        "condition": "同じ推定値から算出方法（式と入力）だけが欠ける"
+      },
+      "expected": {
+        "base_status": "hypothesis",
+        "changed_status": "rejected",
+        "required": [
+          "calculation",
+          "confidence",
+          "verification_plan",
+          "sensitivity"
+        ],
+        "must_not": "根拠の弱い推定を事実にせず、式・確度・再確認条件の無い数値を仮説として受理しない"
+      }
     }
   ]
 }

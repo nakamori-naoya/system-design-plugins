@@ -4,13 +4,11 @@
 
 正本は`schema_version=2`だけを受理する。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、構成判断から日本語の推奨用語名への参照だけを持つ。用語や用語正本のIDを要求せず、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本では表ではなく概念種別見出しによって、各用語がアクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念のどれかを明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を混同しない。用語正本の版が変わった場合は、参照項目を`change_log.invalidated_refs`へ記録して再評価する。旧版を現行正本として読取り、更新、変換する経路は持たない。
 
-## プロバイダー実行設定
+## 入力プロバイダーの根拠
 
-`config/defaults.yml`を設定スキーマとし、リポジトリでは`.harness-plugins/system-design.config.yml`に完全な設定を置く。設定解決器は作業範囲、リポジトリ内ローカル設定、リポジトリ設定、個人設定、同梱設定の順で最初の一件だけを選び、層を統合しない。
+`provider`は公開入力であり、許可値は`aws`と`gcp`だけである。未指定、空、その他の値は停止する。既定値は無い。
 
-`cloud.provider`の許可値は`aws`と`gcp`だけである。同梱値は空で、採用可能な既定値ではない。未指定、空、その他の値は停止する。正常例は`cloud.provider: aws`、反例は`cloud.provider: azure`、境界例はプロバイダー キーだけを除いた完全設定であり、境界例は上位層や候補先頭で補完せず停止する。
-
-選択元の永続設定は`input_artifacts.kind=runtime_config`として絶対パスと内容ハッシュを持つ。`prepare.sh`が作る解決済み一時fileは実行にだけ使い、正本のlocatorへ残さない。`provider_resolution.source_artifact_id`、プロバイダー採用制約、プロバイダー選定から同じ永続入力へ辿れることを必須とする。
+利用者がプロバイダーを指定した依頼または決定記録を`input_artifacts`（`kind`は`decision_record`、`organization`、`contract`など実際の出所）として登録し、その制約を`constraints`へ`classification=agreed_decision`で記録する。`provider_decision.constraint_id`はその制約を指し、`provider`機能領域の選定はその制約IDを`constraint_ids`に含める。正常例は`provider: aws`とそれを裏付ける合意済み制約、反例は`provider: azure`、仮説の制約を根拠にした指定、または制約を引用しない`provider`選定である。境界例は制約が存在するのに`provider`選定が引用しない場合で、これは追跡不能として停止する。
 
 ## 配置方式境界
 
@@ -70,7 +68,7 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 - `schema_version`
 - `artifact`
 - `input_artifacts`
-- `provider_resolution`
+- `provider_decision`
 - `drivers`
 - `constraints`
 - `scope`
@@ -89,7 +87,7 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 
 `artifact`は`id`、`version`、`subject`、`state`を持つ。状態は`ready_for_implementation_handoff`または`saved_with_open_questions`である。
 
-`provider_resolution`は`provider`、`source_artifact_id`、`config_locator`、`config_fingerprint`を持つ。プロバイダーは`aws`または`gcp`、根拠成果物は`runtime_config`である。`config_locator`と`config_fingerprint`は、参照する`runtime_config`入力の永続`locator`と`version_or_hash`へそれぞれ完全一致させる。cleanupで削除する解決済み一時fileのpathは記録しない。これにより別実行や別プロバイダーの根拠混入を拒否する。単一クラウド、マルチクラウド、hybridでは解決プロバイダーがプロバイダー範囲に含まれ、採用済み機能領域のプロバイダーは解決プロバイダーと一致する。
+`provider_decision`は`provider`と`constraint_id`を持つ。プロバイダーは`aws`または`gcp`、`constraint_id`は`classification=agreed_decision`の制約IDである。単一クラウド、マルチクラウド、hybridでは入力プロバイダーがプロバイダー範囲に含まれ、採用済み機能領域のプロバイダーは入力プロバイダーと一致する。
 
 `drivers`は`id`、`kind`、`upstream_ref`、`source_artifact_id`、`state`、`statement`、`observed_at`、`impact`を持つ。kindは要求、品質、利用・負荷の一つである。
 

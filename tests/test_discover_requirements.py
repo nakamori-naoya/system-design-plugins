@@ -34,7 +34,20 @@ class RequirementsContractTest(unittest.TestCase):
         )
 
     def load_fixture(self, name: str) -> dict:
-        return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        if value.get("schema_version") == 2:
+            self.add_question_review(value)
+        return value
+
+    def add_question_review(self, value: dict) -> None:
+        for item in value["open_questions"]:
+            item.update(state="open", resolution=None, reason="未決として一覧確認した")
+        value["question_review"] = {
+            "question_ids": [item["id"] for item in value["open_questions"]],
+            "confirmed_by": "利用者",
+            "confirmation": "質問一覧全体と対話終了を確認した",
+            "dialogue_complete": True,
+        }
 
     def outcome(self, status: str = "not_applicable") -> dict:
         return {
@@ -85,24 +98,32 @@ class RequirementsContractTest(unittest.TestCase):
             "state_change": {"from": before, "to": after},
         }
 
-    def test_success_and_boundary_artifacts_are_accepted(self) -> None:
-        for name in ("success.json", "boundary.json"):
-            with self.subTest(name=name):
-                result = self.call(
-                    SCRIPT,
-                    "check",
-                    "--file",
-                    (FIXTURES / name).resolve(),
-                )
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stderr, "")
-                self.assertEqual(
-                    result.stdout.strip(),
-                    str((FIXTURES / name).resolve()),
-                )
+    def test_schema_two_is_accepted_and_preserved_schema_one_asset_is_rejected(self) -> None:
+        result = self.check_temporary(self.load_fixture("success.json"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
 
+        boundary = (FIXTURES / "boundary.json").resolve()
+        rejected = self.call(SCRIPT, "check", "--file", boundary)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("schema_versionは2", rejected.stderr)
         self.assertEqual(self.load_fixture("success.json")["schema_version"], 2)
         self.assertEqual(self.load_fixture("boundary.json")["schema_version"], 1)
+
+    def test_question_lifecycle_and_whole_list_confirmation_are_enforced(self) -> None:
+        artifact = self.load_fixture("success.json")
+        question = {
+            "id": "OQ-999", "question": "確認事項", "claim_ids": ["CLM-003"],
+            "owner": "利用者", "affected_ids": ["REQ-001"], "blocks": ["domain"],
+            "state": "resolved", "resolution": "採用する", "reason": "一覧で合意した",
+        }
+        artifact["open_questions"].append(question)
+        artifact["question_review"]["question_ids"].append("OQ-999")
+        self.assertEqual(self.check_temporary(artifact).returncode, 0)
+        artifact["question_review"]["dialogue_complete"] = False
+        result = self.check_temporary(artifact)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("dialogue_complete", result.stderr)
 
     def test_schema_two_requires_complete_causal_derived_requirement(self) -> None:
         artifact = self.load_fixture("success.json")
@@ -192,8 +213,12 @@ class RequirementsContractTest(unittest.TestCase):
                 "owner": "業務責任者",
                 "affected_ids": ["CMD-001"],
                 "blocks": ["domain"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-001"]
         command["counterpart_open_question_ids"] = ["OQ-001"]
         command["non_success_outcomes"]["rejected"] = {
             "status": "unresolved",
@@ -339,6 +364,55 @@ class RequirementsContractTest(unittest.TestCase):
             boundary_artifact["requirements"][0]["statement"],
         )
 
+    def test_threshold_revision_keeps_evidence_and_decision_history(self) -> None:
+        # 正例: 暫定閾値が利用者の指摘で変わっても、版を上げ、変更前の根拠主張と履歴を残す。
+        artifact = self.load_fixture("success.json")
+        artifact["artifact"]["version"] = 2
+        artifact["decision_history"].append({
+            "version": 2,
+            "changed_claim_ids": ["CLM-001"],
+            "affected_ids": ["DRV-001"],
+            "summary": "利用者の指摘で暫定閾値を見直し、根拠主張CLM-001の値を更新した",
+        })
+        result = self.check_temporary(artifact)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual({item["version"] for item in artifact["decision_history"]}, {1, 2})
+
+        # 反例: 版だけ上げて履歴を残さない。
+        missing_history = self.load_fixture("success.json")
+        missing_history["artifact"]["version"] = 2
+        result = self.check_temporary(missing_history)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("decision_history", result.stderr)
+
+        # 境界例: 履歴が変更した根拠主張を指さない。
+        dangling = copy.deepcopy(artifact)
+        dangling["decision_history"][1]["changed_claim_ids"] = ["CLM-999"]
+        result = self.check_temporary(dangling)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("changed_claim_ids", result.stderr)
+
+    def test_scope_budget_classes_are_exclusive(self) -> None:
+        # 正例: 実装必須、設計説明のみ、対象外が別々の項目を持つ。
+        artifact = self.load_fixture("success.json")
+        budget = artifact["scope_budget"]
+        self.assertTrue(budget["implementation_scope"])
+        self.assertTrue(budget["design_only_scope"])
+        self.assertFalse(set(budget["implementation_scope"]) & set(budget["design_only_scope"]))
+
+        # 反例: 設計説明のみの項目を実装必須にも置く。
+        mixed = copy.deepcopy(artifact)
+        mixed["scope_budget"]["implementation_scope"].append(budget["design_only_scope"][0])
+        result = self.check_temporary(mixed)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("同じ項目", result.stderr)
+
+        # 境界例: delivery_constraintsはスコープ区分ではないので、同じ文字列があっても受理する。
+        constrained = copy.deepcopy(artifact)
+        constrained["scope_budget"]["delivery_constraints"].append(budget["implementation_scope"][0])
+        result = self.check_temporary(constrained)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_hypothesis_cannot_be_promoted_to_requirement(self) -> None:
         artifact = self.load_fixture("success.json")
         artifact["claims"].append(
@@ -391,10 +465,28 @@ class RequirementsContractTest(unittest.TestCase):
         self.assertIn("確認済み観測へ昇格", result.stderr)
 
     def test_design_proposal_cannot_link_back_to_constraint_or_requirement(self) -> None:
-        artifact = self.load_fixture("boundary.json")
-        solution = artifact["solution_inputs"][0]
-        solution["classification"] = "design_proposal"
-        solution["linked_id"] = "CON-001"
+        artifact = self.load_fixture("success.json")
+        artifact["claims"].append(
+            {
+                "id": "CLM-004",
+                "statement": "Redisを使えばセッション継続を実現できる",
+                "classification": "hypothesis",
+                "source": "担当者の未承認提案",
+                "observed_at": "2026-09-14",
+                "owner": "担当者",
+            }
+        )
+        artifact["solution_inputs"] = [
+            {
+                "id": "HOW-001",
+                "statement": "Redisを使う",
+                "classification": "design_proposal",
+                "claim_ids": ["CLM-004"],
+                "rationale": "手段の有効性が未検証である",
+                "linked_id": "REQ-001",
+                "routed_to": "design-cloud-architecture",
+            }
+        ]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "proposal.json"
             self.write_json(path, artifact)
@@ -408,25 +500,37 @@ class RequirementsContractTest(unittest.TestCase):
         self.assertIn("design proposalが要求へ逆流", result.stderr)
 
     def test_same_how_becomes_hypothesis_when_decision_changes_to_proposal(self) -> None:
-        artifact = self.load_fixture("boundary.json")
-        claim = next(item for item in artifact["claims"] if item["id"] == "CLM-004")
-        claim["classification"] = "hypothesis"
-        claim["source"] = "担当者の未承認提案"
-        claim["owner"] = "担当者"
-        artifact["constraints"] = []
+        artifact = self.load_fixture("success.json")
+        artifact["claims"].append(
+            {
+                "id": "CLM-004",
+                "statement": "Redisを使えばセッション継続を実現できる",
+                "classification": "hypothesis",
+                "source": "担当者の未承認提案",
+                "observed_at": "2026-09-14",
+                "owner": "担当者",
+            }
+        )
         artifact["hypotheses"] = [
             {
                 "id": "HYP-001",
                 "statement": "Redisを使えばセッション継続を実現できる",
                 "claim_ids": ["CLM-004"],
                 "falsification_method": "後続設計で要求条件を満たす代替案と比較する",
-                "affected_ids": ["REQDOC-session-continuity", "REQ-001"],
+                "affected_ids": [artifact["artifact"]["id"], "REQ-001"],
             }
         ]
-        solution = artifact["solution_inputs"][0]
-        solution["classification"] = "hypothesis"
-        solution["linked_id"] = "HYP-001"
-        solution["rationale"] = "決定者と必須性がなく、手段の有効性が未検証である"
+        artifact["solution_inputs"] = [
+            {
+                "id": "HOW-001",
+                "statement": "Redisを使う",
+                "classification": "hypothesis",
+                "claim_ids": ["CLM-004"],
+                "rationale": "決定者と必須性がなく、手段の有効性が未検証である",
+                "linked_id": "HYP-001",
+                "routed_to": "design-cloud-architecture",
+            }
+        ]
         artifact["handoff"]["downstream"]["cloud_design"] = ["REQ-001", "HYP-001"]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "proposal-boundary.json"
@@ -445,7 +549,8 @@ class RequirementsContractTest(unittest.TestCase):
             base = Path(temporary)
             repo = base / "repository"
             repo.mkdir()
-            source = (FIXTURES / "success.json").resolve()
+            source = base / "source.json"
+            self.write_json(source, self.load_fixture("success.json"))
             first = self.call(
                 SCRIPT,
                 "write",
@@ -510,7 +615,7 @@ class RequirementsContractTest(unittest.TestCase):
             copied = base / "system-design"
             shutil.copytree(ROOT / "plugins/system-design", copied)
             fixture = base / "artifact.json"
-            shutil.copy2(FIXTURES / "success.json", fixture)
+            self.write_json(fixture, self.load_fixture("success.json"))
             copied_script = (
                 copied
                 / "skills/discover-requirements/scripts/requirements.py"

@@ -58,9 +58,9 @@
     },
     {
       "id": "SRC-008",
-      "kind": "runtime_config",
-      "locator": "/evidence/system-design.config.yml",
-      "version_or_hash": "sha256:provider-aws-001",
+      "kind": "decision_record",
+      "locator": "/evidence/provider-decision.md",
+      "version_or_hash": "sha256:provider-decision-001",
       "observed_at": "2026-09-14"
     },
     {
@@ -71,11 +71,9 @@
       "observed_at": "2026-09-01"
     }
   ],
-  "provider_resolution": {
+  "provider_decision": {
     "provider": "aws",
-    "source_artifact_id": "SRC-008",
-    "config_locator": "/evidence/system-design.config.yml",
-    "config_fingerprint": "sha256:provider-aws-001"
+    "constraint_id": "CON-004"
   },
   "drivers": [
     {
@@ -140,10 +138,10 @@
     {
       "id": "CON-004",
       "type": "organization",
-      "statement": "リポジトリ設定で解決したプロバイダーはAWSである",
+      "statement": "利用者が依頼で指定したクラウドプロバイダーはAWSである",
       "classification": "agreed_decision",
       "source_artifact_id": "SRC-008",
-      "source_ref": "cloud.provider",
+      "source_ref": "provider: aws",
       "observed_at": "2026-09-14"
     }
   ],
@@ -318,7 +316,7 @@
       "verification_ids": [
         "VER-001"
       ],
-      "rationale": "リポジトリの実行時設定はAWSを解決し、運用制約は計画済み検証の対象として残る",
+      "rationale": "利用者が指定したプロバイダーはAWSであり、運用制約は計画済み検証の対象として残る",
       "open_question_ids": []
     },
     {

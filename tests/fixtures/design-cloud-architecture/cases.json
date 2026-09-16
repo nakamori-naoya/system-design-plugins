@@ -6,14 +6,14 @@
       "input": {
         "subject": "状態確認基盤",
         "deployment_constraint": "リージョンA内の単一クラウド管理面",
-        "runtime_config_fixture": "../runtime-config/aws.config.yml"
+        "provider": "aws"
       },
       "expected": {
         "decision": "create_ready_artifact",
         "artifact_fixture": "success.json",
         "mode": "single_cloud",
-        "resolved_provider": "aws",
-        "provider_source_artifact_id": "SRC-008",
+        "provider": "aws",
+        "provider_constraint_id": "CON-004",
         "selected_capabilities": 12
       }
     },

@@ -14,7 +14,7 @@ from typing import Any
 
 
 TOP_KEYS = {
-    "schema_version", "artifact", "input_artifacts", "provider_resolution", "drivers", "constraints",
+    "schema_version", "artifact", "input_artifacts", "provider_decision", "drivers", "constraints",
     "scope", "deployment_model", "alternatives", "selections", "adrs", "diagram",
     "failure_scenarios", "traceability", "verification_plan", "open_questions",
     "question_review",
@@ -152,6 +152,12 @@ def validate_payload(payload: dict[str, Any]) -> None:
     schema_version = payload.get("schema_version")
     if schema_version != 2:
         fail("schema_versionは2でなければなりません")
+    if "provider_resolution" in payload:
+        fail(
+            "この正本はprovider公開入力化より前の形（provider_resolution: config_locator / config_fingerprint）で、"
+            "schema_version 2のまま現行契約では受理しません。provider_decision {provider, constraint_id} を持つ"
+            "新規成果物として作り直してください"
+        )
     exact_keys(payload, TOP_KEYS, "top-level")
 
     artifact = as_dict(payload["artifact"], "artifact")
@@ -183,7 +189,7 @@ def validate_payload(payload: dict[str, Any]) -> None:
         source_ids.add(identifier)
         if item["kind"] not in {
             "requirements_baseline", "logical_design", "workload", "quality",
-            "organization", "operations", "budget", "compliance", "runtime_config",
+            "organization", "operations", "budget", "compliance", "decision_record",
             "terminology", "other",
         }:
             fail(f"{identifier}.kindが不正です")
@@ -193,35 +199,20 @@ def validate_payload(payload: dict[str, Any]) -> None:
         for key in ("locator", "version_or_hash", "observed_at"):
             nonempty(item[key], f"{identifier}.{key}")
 
-    provider_resolution = as_dict(payload["provider_resolution"], "provider_resolution")
-    exact_keys(
-        provider_resolution,
-        {"provider", "source_artifact_id", "config_locator", "config_fingerprint"},
-        "provider_resolution",
-    )
-    resolved_provider = provider_resolution["provider"]
+    provider_decision = as_dict(payload["provider_decision"], "provider_decision")
+    exact_keys(provider_decision, {"provider", "constraint_id"}, "provider_decision")
+    resolved_provider = provider_decision["provider"]
     if resolved_provider not in PROVIDERS:
-        fail("provider_resolution.providerはawsまたはgcpでなければなりません")
-    provider_source_id = provider_resolution["source_artifact_id"]
-    if source_kind_by_id.get(provider_source_id) != "runtime_config":
-        fail("provider_resolution.source_artifact_idはruntime_config入力でなければなりません")
+        fail("provider_decision.providerはawsまたはgcpでなければなりません")
     # Deterministic validation declaration:
-    # source=provider_resolution and its referenced runtime_config input;
-    # input=config_locator/config_fingerprint; normalization=none;
-    # predicate=both values exactly equal the referenced input locator/hash;
-    # diagnostic=which provenance field differs; positive=persistent selected
-    # config; negative=another path/hash; boundary=a deleted transient resolved
-    # path is invalid because it cannot equal the persistent source locator.
-    # This does not judge whether the selected provider is architecturally apt.
-    config_locator = nonempty(provider_resolution["config_locator"], "provider_resolution.config_locator")
-    config_fingerprint = nonempty(provider_resolution["config_fingerprint"], "provider_resolution.config_fingerprint")
-    if not config_fingerprint.startswith("sha256:"):
-        fail("provider_resolution.config_fingerprintはsha256指紋でなければなりません")
-    provider_source = source_by_id[provider_source_id]
-    if provider_source["locator"] != config_locator:
-        fail("永続する設定locatorがruntime_config入力と一致しません")
-    if provider_source["version_or_hash"] != config_fingerprint:
-        fail("同じ実行の設定指紋がruntime_config入力と一致しません")
+    # source=provider_decision and the constraint it names; input=provider and
+    # constraint_id; normalization=none; predicate=the constraint exists, is an
+    # agreed_decision, and the provider selection cites it; diagnostic=which
+    # link is missing; positive=a CON- entry recording the requester's provider
+    # choice; negative=a hypothesis constraint or an unknown id; boundary=a
+    # constraint that exists but is not cited by the provider selection.
+    # This does not judge whether the chosen provider is architecturally apt.
+    provider_constraint_id = nonempty(provider_decision["constraint_id"], "provider_decision.constraint_id")
 
     driver_ids: set[str] = set()
     driver_kinds: dict[str, str] = {}
@@ -276,13 +267,13 @@ def validate_payload(payload: dict[str, Any]) -> None:
             fail(f"{identifier}.source_artifact_idが未解決です")
         for key in ("statement", "source_ref", "observed_at"):
             nonempty(item[key], f"{identifier}.{key}")
-    provider_constraint_ids = {
-        item["id"]
-        for item in constraints
-        if item["source_artifact_id"] == provider_source_id
-    }
-    if not provider_constraint_ids:
-        fail("解決providerがconstraintからruntime_config入力へ追跡されていません")
+    provider_constraint = next(
+        (item for item in constraints if item["id"] == provider_constraint_id), None
+    )
+    if provider_constraint is None:
+        fail("provider_decision.constraint_idがconstraintsに存在しません")
+    if provider_constraint["classification"] != "agreed_decision":
+        fail("provider_decision.constraint_idはagreed_decisionの制約でなければなりません")
 
     scope = as_dict(payload["scope"], "scope")
     exact_keys(
@@ -419,7 +410,7 @@ def validate_payload(payload: dict[str, Any]) -> None:
     mode = deployment["mode"]
     validate_mode(mode, providers, "deployment_model")
     if mode in {"single_cloud", "multi_cloud", "hybrid"} and resolved_provider not in providers:
-        fail("解決providerがdeployment_model.provider_scopeにありません")
+        fail("入力providerがdeployment_model.provider_scopeにありません")
     if deployment["decision_state"] not in {"decided", "proposed", "unresolved"}:
         fail("deployment_model.decision_stateが不正です")
     ensure_refs(deployment["constraint_ids"], constraint_ids, "deployment_model.constraint_ids")
@@ -503,9 +494,9 @@ def validate_payload(payload: dict[str, Any]) -> None:
             for key in ("choice", "provider", "service", "role"):
                 nonempty(item[key], f"{identifier}.{key}")
             if mode in {"single_cloud", "multi_cloud", "hybrid"} and item["provider"] != resolved_provider:
-                fail(f"{identifier}.providerが解決providerと一致しません")
-            if category == "provider" and not provider_constraint_ids.intersection(constraint_refs):
-                fail(f"{identifier}がruntime_config由来のprovider constraintへ追跡されていません")
+                fail(f"{identifier}.providerが入力providerと一致しません")
+            if category == "provider" and provider_constraint_id not in constraint_refs:
+                fail(f"{identifier}がprovider_decisionのprovider constraintへ追跡されていません")
             grounded_drivers = set(requirement_refs) | set(quality_refs) | set(workload_refs)
             if any(driver_states[ref] == "unresolved" for ref in grounded_drivers):
                 fail(f"{identifier}がunresolved driverをselected根拠にしています")

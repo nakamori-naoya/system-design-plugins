@@ -24,6 +24,7 @@ TOP_KEYS = {
     "workload_links",
     "conflicts",
     "open_questions",
+    "question_review",
     "handoff",
     "change_log",
 }
@@ -157,9 +158,9 @@ def validate_threshold(value: Any, label: str) -> None:
 
 
 def validate_payload(payload: dict[str, Any]) -> None:
+    if payload.get("schema_version") != 2:
+        fail("schema_versionは2でなければなりません")
     exact_keys(payload, TOP_KEYS, "top-level")
-    if payload["schema_version"] != 1:
-        fail("schema_versionは1でなければなりません")
 
     artifact = as_dict(payload["artifact"], "artifact")
     exact_keys(artifact, {"id", "version", "subject", "state"}, "artifact")
@@ -231,18 +232,39 @@ def validate_payload(payload: dict[str, Any]) -> None:
         claim_classes[identifier] = item["classification"]
         claim_categories[identifier] = item["category"]
 
+    all_question_ids: set[str] = set()
     question_ids: set[str] = set()
     question_values = as_list(payload["open_questions"], "open_questions")
-    question_keys = {"id", "question", "owner", "affected_refs", "blocks"}
+    question_keys = {"id", "question", "owner", "affected_refs", "blocks", "state", "resolution", "reason"}
     for index, raw in enumerate(question_values):
         item = as_dict(raw, f"open_questions[{index}]")
         exact_keys(item, question_keys, f"open_questions[{index}]")
         identifier = register(item["id"], r"OQ-QR-[0-9]{3,}", "open question", seen)
-        question_ids.add(identifier)
+        all_question_ids.add(identifier)
         nonempty(item["question"], f"{identifier}.question")
         nonempty(item["owner"], f"{identifier}.owner")
         string_list(item["affected_refs"], f"{identifier}.affected_refs")
         string_list(item["blocks"], f"{identifier}.blocks")
+        state = item["state"]
+        if state not in {"open", "resolved", "withdrawn"}:
+            fail(f"{identifier}.stateが不正です")
+        if state == "resolved":
+            nonempty(item["resolution"], f"{identifier}.resolution")
+        elif item["resolution"] is not None:
+            fail(f"{identifier}.resolutionはresolvedの場合だけ設定できます")
+        nonempty(item["reason"], f"{identifier}.reason")
+        if state == "open":
+            question_ids.add(identifier)
+
+    question_review = as_dict(payload["question_review"], "question_review")
+    exact_keys(question_review, {"question_ids", "confirmed_by", "confirmation", "dialogue_complete"}, "question_review")
+    reviewed = string_list(question_review["question_ids"], "question_review.question_ids", non_empty=False)
+    if set(reviewed) != all_question_ids or len(reviewed) != len(all_question_ids):
+        fail("question_review.question_idsが質問一覧全体と一致しません")
+    nonempty(question_review["confirmed_by"], "question_review.confirmed_by")
+    nonempty(question_review["confirmation"], "question_review.confirmation")
+    if question_review["dialogue_complete"] is not True:
+        fail("question_review.dialogue_completeは明示確認後のtrueでなければなりません")
 
     qr_keys = {
         "id",
