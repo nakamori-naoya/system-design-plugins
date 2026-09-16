@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-TOP_KEYS_V1 = {
+TOP_KEYS = {
     "schema_version",
     "artifact",
     "claims",
@@ -26,10 +26,9 @@ TOP_KEYS_V1 = {
     "requirements",
     "hypotheses",
     "open_questions",
+    "question_review",
     "solution_inputs",
     "handoff",
-}
-TOP_KEYS_V2 = TOP_KEYS_V1 | {
     "derived_requirements",
     "design_decisions",
     "scope_budget",
@@ -137,8 +136,6 @@ def validate_terminology(raw: Any, known_ids: set[str]) -> None:
             fail(f"terminologyでsubject_idが重複しています: {subject_id}")
         subjects.add(subject_id)
         terms = string_list(usage["preferred_terms"], f"terminology.usages[{index}].preferred_terms")
-        if any(re.search(r"[ぁ-んァ-ヶ一-龯]", term) is None for term in terms):
-            fail(f"terminology.usages[{index}].preferred_termsは日本語の推奨用語名でなければなりません")
 
 
 def register_id(
@@ -305,13 +302,9 @@ def validate_observations(
 
 def validate_payload(payload: dict[str, Any]) -> None:
     schema_version = payload.get("schema_version")
-    if schema_version not in {1, 2}:
-        fail("schema_versionは1または2でなければなりません")
-    exact_keys(
-        payload,
-        TOP_KEYS_V1 if schema_version == 1 else TOP_KEYS_V2,
-        "top-level",
-    )
+    if schema_version != 2:
+        fail("schema_versionは2でなければなりません")
+    exact_keys(payload, TOP_KEYS, "top-level")
 
     artifact = as_dict(payload["artifact"], "artifact")
     exact_keys(artifact, {"id", "version", "subject", "state"}, "artifact")
@@ -578,6 +571,22 @@ def validate_payload(payload: dict[str, Any]) -> None:
             "delivery_constraints",
         ):
             string_list(scope_budget[key], f"scope_budget.{key}", non_empty=False)
+        # Deterministic validation declaration:
+        # source=scope_budget contract (実装必須・設計説明のみ・対象外は排他);
+        # input=the three scope lists; normalization=exact string comparison;
+        # predicate=no item appears in more than one of the three lists;
+        # diagnostic=the shared item and the lists it appears in;
+        # positive=each item in exactly one list; negative=the same item in
+        # implementation_scope and design_only_scope; boundary=an item in
+        # delivery_constraints may repeat a scope item because it is a budget,
+        # not a scope class. Whether an implementation item fits the budget is
+        # semantic evaluation.
+        scope_classes = ("implementation_scope", "design_only_scope", "out_of_scope")
+        for left_index, left in enumerate(scope_classes):
+            for right in scope_classes[left_index + 1:]:
+                shared = set(scope_budget[left]) & set(scope_budget[right])
+                if shared:
+                    fail(f"scope_budgetの{left}と{right}に同じ項目があります: {sorted(shared)}")
 
         history = as_list(payload["decision_history"], "decision_history")
         if not history:
@@ -633,6 +642,7 @@ def validate_payload(payload: dict[str, Any]) -> None:
             fail(f"{identifier}にhypothesis claimがありません")
         nonempty(item["falsification_method"], f"{identifier}.falsification_method")
 
+    question_ids: set[str] = set()
     open_question_ids: set[str] = set()
     open_question_keys = {
         "id",
@@ -641,19 +651,46 @@ def validate_payload(payload: dict[str, Any]) -> None:
         "owner",
         "affected_ids",
         "blocks",
+        "state",
+        "resolution",
+        "reason",
     }
     question_values = as_list(payload["open_questions"], "open_questions")
     for index, raw in enumerate(question_values):
         item = as_dict(raw, f"open_questions[{index}]")
         exact_keys(item, open_question_keys, f"open_questions[{index}]")
         identifier = register_id(item, "open question", seen)
-        open_question_ids.add(identifier)
+        question_ids.add(identifier)
         nonempty(item["question"], f"{identifier}.question")
         refs = ensure_refs(item["claim_ids"], claim_ids, f"{identifier}.claim_ids")
-        if "open_question" not in {claim_classes[ref] for ref in refs}:
-            fail(f"{identifier}にopen_question claimがありません")
         nonempty(item["owner"], f"{identifier}.owner")
         string_list(item["blocks"], f"{identifier}.blocks")
+        state = item["state"]
+        if state not in {"open", "resolved", "withdrawn"}:
+            fail(f"{identifier}.stateが不正です")
+        if state == "resolved":
+            nonempty(item["resolution"], f"{identifier}.resolution")
+        elif item["resolution"] is not None:
+            fail(f"{identifier}.resolutionはresolvedの場合だけ設定できます")
+        nonempty(item["reason"], f"{identifier}.reason")
+        if state == "open":
+            if "open_question" not in {claim_classes[ref] for ref in refs}:
+                fail(f"{identifier}にopen_question claimがありません")
+            open_question_ids.add(identifier)
+
+    question_review = as_dict(payload["question_review"], "question_review")
+    exact_keys(
+        question_review,
+        {"question_ids", "confirmed_by", "confirmation", "dialogue_complete"},
+        "question_review",
+    )
+    reviewed = string_list(question_review["question_ids"], "question_review.question_ids", non_empty=False)
+    if set(reviewed) != question_ids or len(reviewed) != len(question_ids):
+        fail("question_review.question_idsが質問一覧全体と一致しません")
+    nonempty(question_review["confirmed_by"], "question_review.confirmed_by")
+    nonempty(question_review["confirmation"], "question_review.confirmation")
+    if question_review["dialogue_complete"] is not True:
+        fail("question_review.dialogue_completeは明示確認後のtrueでなければなりません")
 
     if schema_version == 2:
         catalog = as_dict(payload["interaction_catalog"], "interaction_catalog")
@@ -686,8 +723,6 @@ def validate_payload(payload: dict[str, Any]) -> None:
             command_event_ids.add(identifier)
             for key in ("name", "completed_fact", "state_target"):
                 value = nonempty(item[key], f"{identifier}.{key}")
-                if re.search(r"[ぁ-んァ-ヶ一-龯]", value) is None:
-                    fail(f"{identifier}.{key}は日本語でなければなりません")
             refs = ensure_refs(item["claim_ids"], claim_ids, f"{identifier}.claim_ids")
             if not {claim_classes[ref] for ref in refs} <= CONFIRMED_CLASSES:
                 fail(f"{identifier}が未確認の事実をコマンドイベントへ昇格しています")
@@ -707,8 +742,6 @@ def validate_payload(payload: dict[str, Any]) -> None:
             query_event_ids.add(identifier)
             for key in ("name", "completed_fact", "observed_result"):
                 value = nonempty(item[key], f"{identifier}.{key}")
-                if re.search(r"[ぁ-んァ-ヶ一-龯]", value) is None:
-                    fail(f"{identifier}.{key}は日本語でなければなりません")
             refs = ensure_refs(item["claim_ids"], claim_ids, f"{identifier}.claim_ids")
             if not {claim_classes[ref] for ref in refs} <= CONFIRMED_CLASSES:
                 fail(f"{identifier}が未確認の事実をクエリイベントへ昇格しています")
@@ -722,8 +755,6 @@ def validate_payload(payload: dict[str, Any]) -> None:
             time_event_ids.add(identifier)
             for key in ("name", "occurred_fact", "time_basis"):
                 value = nonempty(item[key], f"{identifier}.{key}")
-                if re.search(r"[ぁ-んァ-ヶ一-龯]", value) is None:
-                    fail(f"{identifier}.{key}は日本語でなければなりません")
             refs = ensure_refs(item["claim_ids"], claim_ids, f"{identifier}.claim_ids")
             if not {claim_classes[ref] for ref in refs} <= CONFIRMED_CLASSES:
                 fail(f"{identifier}が未確認の事実を時間イベントへ昇格しています")
@@ -741,8 +772,6 @@ def validate_payload(payload: dict[str, Any]) -> None:
             identifier = register_id(item, "system event", seen)
             for key in ("name", "observed_fact"):
                 value = nonempty(item[key], f"{identifier}.{key}")
-                if re.search(r"[ぁ-んァ-ヶ一-龯]", value) is None:
-                    fail(f"{identifier}.{key}は日本語でなければなりません")
             refs = ensure_refs(item["claim_ids"], claim_ids, f"{identifier}.claim_ids")
             if not {claim_classes[ref] for ref in refs} <= CONFIRMED_CLASSES:
                 fail(f"{identifier}が未確認の事実をシステムイベントへ昇格しています")

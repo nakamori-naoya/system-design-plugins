@@ -4,7 +4,7 @@
 
 ## 品質区分
 
-次の10区分を一件ずつ評価する。括弧内は互換性のため保持する機械値である。
+次の10区分を一件ずつ評価する。括弧内は現行公開契約で固定する機械値である。
 
 1. 応答時間（`latency`）: 利用者またはシステム境界間で完了までに要する時間。
 2. 処理量（`throughput`）: 指定時間内に受理または完了する仕事量。
@@ -72,7 +72,7 @@
 
 ## 正本スキーマ
 
-最上位キーは次の11件だけにする。
+`schema_version`は2だけを受理する。最上位キーは次の12件だけにする。
 
 - `schema_version`
 - `artifact`
@@ -83,6 +83,7 @@
 - `workload_links`
 - `conflicts`
 - `open_questions`
+- `question_review`
 - `handoff`
 - `change_log`
 
@@ -123,7 +124,7 @@
 
 `conflicts`は`id`、`left_ref`、`right_ref`、`statement`、`status`、`resolution`、`evidence_claim_ids`、`open_question_ids`を持つ。
 
-`open_questions`は`id`、`question`、`owner`、`affected_refs`、`blocks`を持つ。`handoff`は`ready`、`blocking_question_ids`、`quality_requirement_ids`、`workload_link_ids`、`conflict_ids`を持つ。
+`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。`handoff`は`ready`、`blocking_question_ids`、`quality_requirement_ids`、`workload_link_ids`、`conflict_ids`を持つ。
 
 未決の問いまたは未解消の矛盾が一件でもあれば`handoff.ready=false`、成果物の状態は`saved_with_open_questions`にする。なければ`handoff.ready=true`、状態は`ready_for_architecture`にする。仮説は状態を保って引き渡しできるが、後続は合意済み前提として扱わない。
 

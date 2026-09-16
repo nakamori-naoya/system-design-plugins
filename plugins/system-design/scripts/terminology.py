@@ -81,8 +81,8 @@ def validate_terminology_markdown(path: Path) -> tuple[int, set[str]]:
     except (OSError, UnicodeError) as exc:
         fail(f"用語正本をUTF-8 Markdownとして読めません: {exc}")
     version, subject, body = parse_frontmatter(text)
-    if not subject or re.search(r"[ぁ-んァ-ヶ一-龯]", subject) is None:
-        fail("用語正本.subjectは日本語でなければなりません")
+    if not subject:
+        fail("用語正本.subjectは非空でなければなりません")
     if re.search(r"^\s*\|.*\|\s*$", body, re.MULTILINE):
         fail("用語正本はMarkdown表ではなく概念種別ごとの見出しで記載してください")
     if re.search(r"^#\s+\S", body, re.MULTILINE) is None:
@@ -104,8 +104,6 @@ def validate_terminology_markdown(path: Path) -> tuple[int, set[str]]:
             if current_category is None:
                 fail("用語見出しは概念種別見出しの下に置かなければなりません")
             current_term = term_match.group(1)
-            if re.search(r"[ぁ-んァ-ヶ一-龯]", current_term) is None:
-                fail(f"推奨用語名は日本語でなければなりません: {current_term}")
             if current_term in terms:
                 fail(f"推奨用語名が重複しています: {current_term}")
             terms[current_term] = {"category": current_category, "lines": []}

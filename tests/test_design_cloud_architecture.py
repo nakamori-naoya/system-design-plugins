@@ -16,9 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = ROOT / "plugins/system-design"
 SKILL_ROOT = PACKAGE_ROOT / "skills/design-cloud-architecture"
 SCRIPT = SKILL_ROOT / "scripts/architecture.py"
-PREPARE = PACKAGE_ROOT / "scripts/prepare.sh"
 FIXTURES = ROOT / "tests/fixtures/design-cloud-architecture"
-CONFIG_FIXTURES = ROOT / "tests/fixtures/runtime-config"
 CAPABILITIES = {
     "provider", "region_az", "compute", "network", "storage", "database",
     "messaging", "identity", "edge", "observability", "backup_dr", "delivery",
@@ -35,7 +33,16 @@ class ArchitectureContractTest(unittest.TestCase):
         )
 
     def load(self, name: str) -> dict:
-        return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        if value.get("schema_version") == 2:
+            for item in value["open_questions"]:
+                item.update(state="open", resolution=None, reason="未決として一覧確認した")
+            value["question_review"] = {
+                "question_ids": [item["id"] for item in value["open_questions"]],
+                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
+                "dialogue_complete": True,
+            }
+        return value
 
     def write(self, path: Path, value: dict) -> None:
         path.write_text(
@@ -51,18 +58,25 @@ class ArchitectureContractTest(unittest.TestCase):
         return self.call(SCRIPT, "check", "--file", path.resolve())
 
     def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        path = (FIXTURES / "success.json").resolve()
-        result = self.call(SCRIPT, "check", "--file", path)
+        result = self.check_temporary(self.load("success.json"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
-        self.assertEqual(result.stdout.strip(), str(path))
 
-    def test_schema_one_remains_accepted_during_migration(self) -> None:
+    def test_withdrawn_question_does_not_block_ready_but_requires_final_confirmation(self) -> None:
+        artifact = self.load("success.json")
+        artifact["open_questions"] = [{"id": "OQ-ARCH-999", "question": "撤回済み", "owner": "利用者", "affected_refs": ["SEL-001"], "blocks": ["implementation_handoff"], "state": "withdrawn", "resolution": None, "reason": "対象外と合意"}]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-999"]
+        self.assertEqual(self.check_temporary(artifact).returncode, 0)
+        artifact["question_review"]["question_ids"] = []
+        self.assertEqual(self.check_temporary(artifact).returncode, 2)
+
+    def test_schema_one_is_rejected_without_migration_path(self) -> None:
         artifact = self.load("success.json")
         artifact["schema_version"] = 1
         del artifact["terminology"]
         result = self.check_temporary(artifact)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("schema_versionは2", result.stderr)
 
     def test_success_contains_required_design_products(self) -> None:
         artifact = self.load("success.json")
@@ -78,136 +92,71 @@ class ArchitectureContractTest(unittest.TestCase):
         self.assertTrue(artifact["failure_scenarios"])
         self.assertTrue(artifact["verification_plan"])
 
-    def test_runtime_config_resolves_explicit_aws_and_cleans_up(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            copied_package = base / "system-design"
-            shutil.copytree(PACKAGE_ROOT, copied_package)
-            repo = base / "repository"
-            settings = repo / ".harness-plugins"
-            settings.mkdir(parents=True)
-            config = settings / "system-design.config.yml"
-            shutil.copy2(CONFIG_FIXTURES / "aws.config.yml", config)
-            prepared = subprocess.run(
-                ["bash", str(copied_package / "scripts/prepare.sh"), str(repo.resolve())],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(prepared.returncode, 0, prepared.stderr)
-            resolved = Path(prepared.stdout.strip())
-            self.assertTrue(resolved.is_absolute())
-            inspected = subprocess.run(
-                ["yq", "-o=json", "-I=0", ".", str(resolved)],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(inspected.returncode, 0, inspected.stderr)
-            value = json.loads(inspected.stdout)
-            self.assertEqual(value["cloud"]["provider"], "aws")
-            self.assertEqual(value["resolution"]["config_source"], "project")
-            self.assertEqual(
-                value["resolution"]["selected_config"],
-                str(config.resolve()),
-            )
-            self.assertRegex(value["resolution"]["config_fingerprint"], r"^sha256:[0-9a-f]{64}$")
-            cleaned = subprocess.run(
-                [
-                    "python3",
-                    str(copied_package / "scripts/run-config.py"),
-                    "cleanup",
-                    "--config",
-                    str(resolved),
-                ],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(cleaned.returncode, 0, cleaned.stderr)
-            self.assertFalse(resolved.parent.exists())
-
-    def test_runtime_config_rejects_missing_and_invalid_provider(self) -> None:
-        cases = (
-            ("provider-missing.config.yml", "自己完結していない"),
-            ("provider-invalid.config.yml", "不正"),
-        )
-        for fixture, message in cases:
-            with self.subTest(fixture=fixture), tempfile.TemporaryDirectory() as temporary:
-                repo = Path(temporary) / "repository"
-                settings = repo / ".harness-plugins"
-                settings.mkdir(parents=True)
-                shutil.copy2(
-                    CONFIG_FIXTURES / fixture,
-                    settings / "system-design.config.yml",
-                )
-                prepared = subprocess.run(
-                    ["bash", str(PREPARE), str(repo.resolve())],
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(prepared.returncode, 2)
-                self.assertIn(message, prepared.stderr)
-                self.assertEqual(prepared.stdout, "")
-
-    def test_resolved_provider_is_traced_and_mismatches_are_rejected(self) -> None:
+    def test_input_provider_is_traced_to_an_agreed_constraint_and_mismatches_are_rejected(self) -> None:
+        # 正例: 入力providerは合意済み制約（CON-）へ辿れ、provider選定がその制約を引用する。
         artifact = self.load("success.json")
-        source_id = artifact["provider_resolution"]["source_artifact_id"]
-        source = next(item for item in artifact["input_artifacts"] if item["id"] == source_id)
+        decision = artifact["provider_decision"]
+        constraint = next(item for item in artifact["constraints"] if item["id"] == decision["constraint_id"])
         provider_selection = next(
             item for item in artifact["selections"] if item["category"] == "provider"
         )
-        config_constraints = {
-            item["id"]
-            for item in artifact["constraints"]
-            if item["source_artifact_id"] == source_id
-        }
-        self.assertEqual(source["kind"], "runtime_config")
-        self.assertEqual(artifact["provider_resolution"]["provider"], "aws")
-        self.assertEqual(artifact["provider_resolution"]["resolved_config"], source["locator"])
-        self.assertEqual(artifact["provider_resolution"]["config_fingerprint"], source["version_or_hash"])
+        self.assertEqual(decision["provider"], "aws")
+        self.assertEqual(constraint["classification"], "agreed_decision")
         self.assertEqual(provider_selection["provider"], "aws")
-        self.assertTrue(config_constraints & set(provider_selection["constraint_ids"]))
+        self.assertIn(decision["constraint_id"], provider_selection["constraint_ids"])
 
+        # 反例: aws/gcp以外のprovider。
         invalid_provider = self.load("success.json")
-        invalid_provider["provider_resolution"]["provider"] = "azure"
+        invalid_provider["provider_decision"]["provider"] = "azure"
         result = self.check_temporary(invalid_provider)
         self.assertEqual(result.returncode, 2)
         self.assertIn("awsまたはgcp", result.stderr)
 
-        wrong_source = self.load("success.json")
-        wrong_source["provider_resolution"]["source_artifact_id"] = "SRC-006"
-        result = self.check_temporary(wrong_source)
+        # 反例: 存在しない制約ID。
+        unknown_constraint = self.load("success.json")
+        unknown_constraint["provider_decision"]["constraint_id"] = "CON-999"
+        result = self.check_temporary(unknown_constraint)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("runtime_config", result.stderr)
+        self.assertIn("constraintsに存在しません", result.stderr)
 
-        wrong_path = self.load("success.json")
-        wrong_path["provider_resolution"]["resolved_config"] = "/evidence/another-run.resolved.yml"
-        result = self.check_temporary(wrong_path)
+        # 反例: 仮説の制約をprovider根拠にする。
+        hypothesis_constraint = self.load("success.json")
+        hypothesis_constraint["provider_decision"]["constraint_id"] = "CON-003"
+        result = self.check_temporary(hypothesis_constraint)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("path", result.stderr)
+        self.assertIn("agreed_decision", result.stderr)
 
-        wrong_fingerprint = self.load("success.json")
-        wrong_fingerprint["provider_resolution"]["config_fingerprint"] = "sha256:another-run"
-        result = self.check_temporary(wrong_fingerprint)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("設定指紋", result.stderr)
-
-        missing_provenance = self.load("success.json")
-        missing_provenance["provider_resolution"].pop("config_fingerprint")
-        result = self.check_temporary(missing_provenance)
+        # 反例: 旧形の来歴keyは受理しない。
+        legacy_shape = self.load("success.json")
+        legacy_shape["provider_decision"] = {
+            "provider": "aws",
+            "source_artifact_id": "SRC-008",
+            "config_locator": "/evidence/system-design.config.yml",
+            "config_fingerprint": "sha256:provider-aws-001",
+        }
+        result = self.check_temporary(legacy_shape)
         self.assertEqual(result.returncode, 2)
         self.assertIn("keys", result.stderr)
 
+        # 反例: provider公開入力化より前の正本（top-level provider_resolution）は、
+        # schema_version 2のままでも、何が変わったかを示す診断で拒否する。
+        pre_change = self.load("success.json")
+        pre_change["provider_resolution"] = pre_change.pop("provider_decision")
+        result = self.check_temporary(pre_change)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("provider公開入力化より前の形", result.stderr)
+        self.assertIn("provider_decision", result.stderr)
+
+        # 反例: provider選定のproviderが入力providerと違う。
         mismatch = self.load("success.json")
         next(item for item in mismatch["selections"] if item["category"] == "provider")[
             "provider"
         ] = "gcp"
         result = self.check_temporary(mismatch)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("解決provider", result.stderr)
+        self.assertIn("入力provider", result.stderr)
 
+        # 境界例: 制約は存在するがprovider選定が引用しない。
         untraced = self.load("success.json")
         selection = next(
             item for item in untraced["selections"] if item["category"] == "provider"
@@ -235,11 +184,9 @@ class ArchitectureContractTest(unittest.TestCase):
         success = next(
             scenario for scenario in scenarios if scenario["kind"] == "success"
         )
-        self.assertEqual(success["expected"]["resolved_provider"], "aws")
-        self.assertEqual(
-            success["expected"]["provider_source_artifact_id"],
-            "SRC-008",
-        )
+        self.assertEqual(success["input"]["provider"], "aws")
+        self.assertEqual(success["expected"]["provider"], "aws")
+        self.assertEqual(success["expected"]["provider_constraint_id"], "CON-004")
         undecided = next(
             scenario
             for scenario in scenarios
@@ -392,8 +339,12 @@ class ArchitectureContractTest(unittest.TestCase):
                 "owner": "architecture sponsor",
                 "affected_refs": ["SEL-001", "ALT-001"],
                 "blocks": ["implementation_handoff"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
         artifact["artifact"]["state"] = "saved_with_open_questions"
         result = self.check_temporary(artifact)
         self.assertEqual(result.returncode, 2)
@@ -433,8 +384,12 @@ class ArchitectureContractTest(unittest.TestCase):
                 "owner": "architecture sponsor",
                 "affected_refs": ["SEL-001", "ALT-001"],
                 "blocks": ["implementation_handoff"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-ARCH-001"]
         result = self.check_temporary(artifact)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -463,7 +418,8 @@ class ArchitectureContractTest(unittest.TestCase):
             base = Path(temporary)
             repo = base / "repository"
             repo.mkdir()
-            source = (FIXTURES / "success.json").resolve()
+            source = base / "source.json"
+            self.write(source, self.load("success.json"))
             first = self.call(
                 SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
             )
@@ -502,7 +458,7 @@ class ArchitectureContractTest(unittest.TestCase):
             copied = base / "system-design"
             shutil.copytree(ROOT / "plugins/system-design", copied)
             artifact = base / "architecture.json"
-            shutil.copy2(FIXTURES / "success.json", artifact)
+            self.write(artifact, self.load("success.json"))
             copied_script = copied / "skills/design-cloud-architecture/scripts/architecture.py"
             result = self.call(copied_script, "check", "--file", artifact.resolve())
             self.assertEqual(result.returncode, 0, result.stderr)

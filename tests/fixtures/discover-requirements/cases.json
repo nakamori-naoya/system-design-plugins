@@ -90,6 +90,42 @@
         "changed_route": "interaction_catalog.system_events",
         "must_not": "内部処理の完了をコマンドイベントまたはクエリイベントへ昇格しない"
       }
+    },
+    {
+      "id": "requirements-threshold-revision-boundary",
+      "kind": "boundary",
+      "base": {
+        "condition": "暫定閾値を含む導出要件が版1で保存され、decision_historyに初版の根拠がある"
+      },
+      "one_change": {
+        "condition": "利用者のフィードバックで暫定閾値の値だけが変わり、版2として更新保存する"
+      },
+      "expected": {
+        "base_classification": "hypothesis",
+        "changed_classification": "hypothesis",
+        "changed_version": 2,
+        "required": [
+          "変更前の根拠主張IDが残る",
+          "decision_historyに版1と版2の両方がある",
+          "変更後も暫定閾値は仮説のまま"
+        ],
+        "must_not": "値の変更を失敗とみなさず、変更前の根拠と変更履歴を消さない"
+      }
+    },
+    {
+      "id": "requirements-scope-budget-boundary",
+      "kind": "boundary",
+      "base": {
+        "condition": "世界規模の構成説明はdesign_only_scope、初期実装で検証する範囲はimplementation_scopeに分かれ、期間と基盤の予算がdelivery_constraintsにある"
+      },
+      "one_change": {
+        "condition": "同じ項目がimplementation_scopeとdesign_only_scopeの両方に置かれる"
+      },
+      "expected": {
+        "base_classification": "design_only_scope",
+        "changed_classification": "rejected",
+        "must_not": "スコープ予算を超える実装を必須要件へ混ぜず、同じ項目を複数のスコープ区分へ置かない"
+      }
     }
   ]
 }

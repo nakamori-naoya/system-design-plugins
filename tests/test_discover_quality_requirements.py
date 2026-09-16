@@ -40,7 +40,28 @@ class QualityContractTest(unittest.TestCase):
         )
 
     def load(self, name: str) -> dict:
-        return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        value = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+        if name == "success.json":
+            value["schema_version"] = 2
+        if value.get("schema_version") == 2:
+            for item in value["open_questions"]:
+                item.update(state="open", resolution=None, reason="未決として一覧確認した")
+            value["question_review"] = {
+                "question_ids": [item["id"] for item in value["open_questions"]],
+                "confirmed_by": "利用者", "confirmation": "質問一覧全体と対話終了を確認した",
+                "dialogue_complete": True,
+            }
+        return value
+
+    def test_question_review_must_cover_the_whole_list(self) -> None:
+        artifact = self.load("success.json")
+        artifact["open_questions"] = [{"id": "OQ-QR-999", "question": "未決", "owner": "利用者", "affected_refs": ["QR-001"], "blocks": ["architecture"], "state": "open", "resolution": None, "reason": "回答待ち"}]
+        artifact["handoff"]["ready"] = False
+        artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-999"]
+        artifact["artifact"]["state"] = "saved_with_open_questions"
+        result = self.check_temporary(artifact)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("質問一覧全体", result.stderr)
 
     def write(self, path: Path, value: dict) -> None:
         path.write_text(
@@ -56,11 +77,16 @@ class QualityContractTest(unittest.TestCase):
         return self.call(SCRIPT, "check", "--file", path.resolve())
 
     def test_success_artifact_is_accepted_without_stderr(self) -> None:
-        path = (FIXTURES / "success.json").resolve()
-        result = self.call(SCRIPT, "check", "--file", path)
+        result = self.check_temporary(self.load("success.json"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, "")
-        self.assertEqual(result.stdout.strip(), str(path))
+
+    def test_preserved_schema_one_fixture_is_rejected(self) -> None:
+        path = (FIXTURES / "success.json").resolve()
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema_version"], 1)
+        result = self.call(SCRIPT, "check", "--file", path)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("schema_versionは2", result.stderr)
 
     def test_success_covers_categories_measurement_and_hypotheses(self) -> None:
         artifact = self.load("success.json")
@@ -135,8 +161,12 @@ class QualityContractTest(unittest.TestCase):
                 "owner": "service owner",
                 "affected_refs": ["QR-003"],
                 "blocks": ["architecture"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-QR-001"]
         artifact["artifact"]["state"] = "saved_with_open_questions"
         artifact["handoff"]["ready"] = False
         artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-001"]
@@ -245,8 +275,12 @@ class QualityContractTest(unittest.TestCase):
                 "owner": "product finance owner",
                 "affected_refs": ["QR-006", "QWL-004", "QCON-001"],
                 "blocks": ["architecture"],
+                "state": "open",
+                "resolution": None,
+                "reason": "回答待ち",
             }
         ]
+        artifact["question_review"]["question_ids"] = ["OQ-QR-001"]
         artifact["artifact"]["state"] = "saved_with_open_questions"
         artifact["handoff"]["ready"] = False
         artifact["handoff"]["blocking_question_ids"] = ["OQ-QR-001"]
@@ -281,7 +315,8 @@ class QualityContractTest(unittest.TestCase):
             base = Path(temporary)
             repo = base / "repository"
             repo.mkdir()
-            source = (FIXTURES / "success.json").resolve()
+            source = base / "source.json"
+            self.write(source, self.load("success.json"))
             first = self.call(
                 SCRIPT, "write", "--repo", repo.resolve(), "--slug", "status", "--file", source
             )
@@ -328,7 +363,7 @@ class QualityContractTest(unittest.TestCase):
             copied = base / "system-design"
             shutil.copytree(ROOT / "plugins/system-design", copied)
             artifact = base / "quality.json"
-            shutil.copy2(FIXTURES / "success.json", artifact)
+            self.write(artifact, self.load("success.json"))
             copied_script = copied / "skills/discover-quality-requirements/scripts/quality.py"
             result = self.call(copied_script, "check", "--file", artifact.resolve())
             self.assertEqual(result.returncode, 0, result.stderr)

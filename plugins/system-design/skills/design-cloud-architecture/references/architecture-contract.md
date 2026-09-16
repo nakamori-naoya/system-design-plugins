@@ -2,15 +2,13 @@
 
 この参照資料は配置方式、選定と比較、ADR、構成図、追跡可能性、障害、検証、保存スキーマを定める。上流要求や論理データモデル、アプリケーション内部、IaCは定めない。
 
-スキーマ1は既存正本の互換読取に使う。新規成果物のスキーマ2は、既存項目に`terminology`を加える。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、構成判断から日本語の推奨用語名への参照だけを持つ。用語や用語正本のIDを要求せず、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本では表ではなく概念種別見出しによって、各用語がアクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念のどれかを明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を混同しない。用語正本の版が変わった場合は、参照項目を`change_log.invalidated_refs`へ記録して再評価する。
+正本は`schema_version=2`だけを受理する。`terminology`は共有Markdown用語正本の所在、1以上の整数版と、構成判断から日本語の推奨用語名への参照だけを持つ。用語や用語正本のIDを要求せず、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本では表ではなく概念種別見出しによって、各用語がアクター、コマンド、クエリ、コマンドイベント、クエリイベント、時間イベント、システムイベント、値・指標、状態、データ、方針・制約、業務上の概念、負荷特性、設計上の概念のどれかを明示する。操作の意図、各操作の成立事実、時間経過、内部処理の観測事実を混同しない。用語正本の版が変わった場合は、参照項目を`change_log.invalidated_refs`へ記録して再評価する。旧版を現行正本として読取り、更新、変換する経路は持たない。
 
-## プロバイダー実行設定
+## 入力プロバイダーの根拠
 
-`config/defaults.yml`を設定スキーマとし、リポジトリでは`.harness-plugins/system-design.config.yml`に完全な設定を置く。設定解決器は作業範囲、リポジトリ内ローカル設定、リポジトリ設定、個人設定、同梱設定の順で最初の一件だけを選び、層を統合しない。
+`provider`は公開入力であり、許可値は`aws`と`gcp`だけである。未指定、空、その他の値は停止する。既定値は無い。
 
-`cloud.provider`の許可値は`aws`と`gcp`だけである。同梱値は空で、採用可能な既定値ではない。未指定、空、その他の値は停止する。正常例は`cloud.provider: aws`、反例は`cloud.provider: azure`、境界例はプロバイダー キーだけを除いた完全設定であり、境界例は上位層や候補先頭で補完せず停止する。
-
-解決済み設定は`input_artifacts.kind=runtime_config`として絶対パスとハッシュを持つ。`provider_resolution.source_artifact_id`、プロバイダー採用制約、プロバイダー選定から同じ入力へ辿れることを必須とする。
+利用者がプロバイダーを指定した依頼または決定記録を`input_artifacts`（`kind`は`decision_record`、`organization`、`contract`など実際の出所）として登録し、その制約を`constraints`へ`classification=agreed_decision`で記録する。`provider_decision.constraint_id`はその制約を指し、`provider`機能領域の選定はその制約IDを`constraint_ids`に含める。正常例は`provider: aws`とそれを裏付ける合意済み制約、反例は`provider: azure`、仮説の制約を根拠にした指定、または制約を引用しない`provider`選定である。境界例は制約が存在するのに`provider`選定が引用しない場合で、これは追跡不能として停止する。
 
 ## 配置方式境界
 
@@ -30,7 +28,7 @@
 
 ## 選定と代替案
 
-次の12機能領域を一度ずつ評価する。括弧内は互換性のため保持する機械値である。
+次の12機能領域を一度ずつ評価する。括弧内は現行公開契約で固定する機械値である。
 
 1. プロバイダー（`provider`）
 2. リージョンと可用性ゾーン（`region_az`）
@@ -65,12 +63,12 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 
 ## 正本スキーマ
 
-最上位キーは次の17件だけにする。
+最上位キーは次の18件だけにする。
 
 - `schema_version`
 - `artifact`
 - `input_artifacts`
-- `provider_resolution`
+- `provider_decision`
 - `drivers`
 - `constraints`
 - `scope`
@@ -83,11 +81,13 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 - `traceability`
 - `verification_plan`
 - `open_questions`
+- `question_review`
 - `change_log`
+- `terminology`
 
 `artifact`は`id`、`version`、`subject`、`state`を持つ。状態は`ready_for_implementation_handoff`または`saved_with_open_questions`である。
 
-`provider_resolution`は`provider`、`source_artifact_id`、`resolved_config`、`config_fingerprint`を持つ。プロバイダーは`aws`または`gcp`、根拠成果物は`runtime_config`である。`resolved_config`と`config_fingerprint`は、参照する`runtime_config`入力の`locator`と`version_or_hash`へそれぞれ完全一致させる。これにより別実行や別プロバイダーの根拠混入を拒否する。単一クラウド、マルチクラウド、hybridでは解決プロバイダーがプロバイダー範囲に含まれ、採用済み機能領域のプロバイダーは解決プロバイダーと一致する。
+`provider_decision`は`provider`と`constraint_id`を持つ。プロバイダーは`aws`または`gcp`、`constraint_id`は`classification=agreed_decision`の制約IDである。単一クラウド、マルチクラウド、hybridでは入力プロバイダーがプロバイダー範囲に含まれ、採用済み機能領域のプロバイダーは入力プロバイダーと一致する。
 
 `drivers`は`id`、`kind`、`upstream_ref`、`source_artifact_id`、`state`、`statement`、`observed_at`、`impact`を持つ。kindは要求、品質、利用・負荷の一つである。
 
@@ -104,6 +104,8 @@ Mermaid記法はすべての境界、ノード、流れ、可用性単位IDを�
 `traceability`は選定ごとに`selection_id`、`requirement_driver_ids`、`quality_driver_ids`、`workload_driver_ids`、`constraint_ids`、`adr_ids`、`verification_ids`を持ち、選定上の集合と一致する。
 
 `verification_plan`は`id`、`kind`、`objective`、`method`、`expected_evidence`、`owner`、`status`、`trace_refs`を持つ。実行していない検証は計画済みにする。
+
+`open_questions`は質問台帳であり、`id`、`question`、`owner`、`affected_refs`、`blocks`、`state`、`resolution`、`reason`を持つ。`state`は`open`、`resolved`、`withdrawn`を区別し、`resolved`だけが非空の`resolution`を持つ。`question_review`は全質問ID、確認者、一覧全体の確認内容、`dialogue_complete=true`を持つ。
 
 未決の問いがある、配置判断が未決、選定が未決、採用済みADRがない場合は状態を`saved_with_open_questions`にする。それ以外は`ready_for_implementation_handoff`にできる。
 

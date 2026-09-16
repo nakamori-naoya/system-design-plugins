@@ -10,21 +10,20 @@
 
 テストデータファイルが存在するだけでは合格にしない。実モデル未実行なら未検証として報告する。
 
-## 文書化の契約 v2 検査
+## write-docへの受け渡し検査
 
-- 正本: 各公開入口の `playbook.yml` と `SKILL.md` の文書化契約。
-- 入力: 4 入口の YAML 宣言。実モデルや外部サービスは呼ばない。
-- 正規化: YAML を JSON の配列・辞書へ変換する。
-- 合格述語: 契約 ID・版、保存先の排他宣言、型、file object 配列、必要入力、正本パス出力が期待集合と一致する。
+- 正本: 各公開入口の`playbook.yml`と、write-docの公開契約（`kind: text`の素材、`document_type`、排他的な保存先）。
+- 入力: 4入口のYAML宣言。実モデルや外部サービスは呼ばない。
+- 正規化: YAMLをJSONへ変換し、`requires`と`steps`を読む。
+- 合格述語: `requires`に`write-doc`があり、`playbook: write-doc`の工程がJSON正本の保存工程より後にあり、`input.document_type`が入口ごとの文書型と一致する。
 - 診断: 違反した入口・フィールドを示す。
-- 正例: 4 入口の新規作成・更新の保存先宣言と、素材の file object への対応。
-- 反例: v1、文字列素材配列、未知の外部入力、保存先依存の欠落、旧設定出力。
-- 境界例: 新規と更新の両方式の宣言を保持し、write-doc の `completed` を設計の `ready` に使わない。
-- 意味評価: 素材のID・根拠・数値・未決・図の保存後の保持はエージェントが確認する。ローカルテスト中の文書保存は素材のコピーであり、write-doc の実モデル実行や端から端までの保証ではない。
+- 正例: 4入口。反例: `requires`無し、保存工程より前の受け渡し、別の文書型、`skill:`での呼び出し。
+- 境界例: 本文と保存先は実行時の値なので検査しない。write-docの`completed`を設計の`ready`に使わない。
+- 意味評価: 渡す本文がJSON正本のID・根拠・数値・未決・図を保っているかは、agentが保存後の資料を読み戻して確認する。
 
-`runtime-config/`は`design-cloud-architecture`の共通prepare/run-config経路を実行する設定テストデータである。`aws.config.yml`は正常系、`provider-missing.config.yml`は必須値欠落、`provider-invalid.config.yml`はenum外プロバイダーの負例として実行する。
+`runtime-config/`は、撤去した設定解決経路（`prepare.sh` / `resolve.sh`）の設定テストデータである。現在どのtestからも参照されない。資産の削除は別の明示された変更として扱うため保持している。
 
-`playbooks/`は4本の公開プレイブックごとに、`normal`、`unresolved`、`invalid-input`、`cleanup-boundary`を持つ。正常系と未決系はどちらも日本語Markdown正本を保存する。未決系は`status: unresolved`、`open_questions`、`handoff.ready: false`を残す。入力契約違反は正本工程へ進まず最終工程を実行し、境界系は所有範囲外の削除を拒否する。
+`playbooks/`は4本の公開入口ごとに、`normal`、`unresolved`、`invalid-input`、`cleanup-boundary`を持つ意味評価用のシナリオである。正常系と未決系はどちらも日本語Markdown正本を保存する。未決系は`status: unresolved`、`open_questions`、`handoff.ready: false`を残す。入力契約違反は正本工程へ進まず停止する。`cleanup-boundary`は撤去した設定cleanup工程のシナリオで、現在どのtestからも参照されない。
 
 grill の受け渡しは契約 v1 の入力YAMLを一時領域へ作り、その `output_to` に fixture の最終YAMLを書いて読み戻す。固定の契約ID・版、質問・推奨・文脈、決定・未決が往復前後で等しいことを検査する。これは呼出側のYAML輸送の検査であり、実際の対話・利用者の合意を実行した証拠ではない。
 

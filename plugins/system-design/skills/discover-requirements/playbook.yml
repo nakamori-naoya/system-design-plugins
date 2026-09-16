@@ -1,0 +1,59 @@
+version: 2
+name: discover-requirements
+description: 根拠付き要求のJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
+inputs: [request, referenced_artifacts, document_destination]
+instructions:
+  execution:
+    directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+steps:
+  - id: split-evidence-claims
+    agent_work: invoking_agent
+    purpose: "要求源を根拠主張単位に分ける"
+  - id: separate-beneficiary-purpose-observation
+    agent_work: invoking_agent
+    purpose: "受益者、目的、観測を分ける"
+  - id: decide-or-defer-scope
+    agent_work: invoking_agent
+    purpose: "スコープとシステム境界を確定・保留し、スコープ予算で閉じる"
+  - id: classify-how
+    agent_work: invoking_agent
+    purpose: "入力中のHowを制約、仮説、設計案へ分類する"
+  - id: form-confirmed-requirements
+    agent_work: invoking_agent
+    purpose: "確認済み要求を作る"
+  - id: inventory-interactions
+    agent_work: invoking_agent
+    purpose: "コマンド、クエリ、イベントを棚卸しし、対になる操作を反証する"
+  - id: derive-service-requirements
+    agent_work: invoking_agent
+    purpose: "サービス特性から導出要件を因果付きで作る"
+  - id: separate-decisions-and-details
+    agent_work: invoking_agent
+    purpose: "理由付き設計判断を残し、実装詳細を後続へ送る"
+  - id: confirm-question-inventory
+    agent_work: invoking_agent
+    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    provides: [question_review]
+  - id: validate-and-save-canonical
+    agent_work: invoking_agent
+    purpose: "scripts/requirements.pyでJSON正本を検査して保存する"
+    needs: [question_review]
+    provides: [requirements_artifact_path]
+  - id: compose-document-text
+    agent_work: invoking_agent
+    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を因果順に組み立てる"
+    needs: [requirements_artifact_path]
+    provides: [requirements_document_text]
+  - id: save-markdown-canonical
+    playbook: write-doc
+    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してrequirements-discovery型の資料を1本保存する"
+    input:
+      document_type: requirements-discovery
+    needs: [requirements_document_text, document_destination]
+    provides: [requirements_document_path]
+  - id: read-back-document
+    agent_work: invoking_agent
+    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、未決、handoffが欠落・昇格していないことを確かめる"
+    needs: [requirements_artifact_path, requirements_document_path]

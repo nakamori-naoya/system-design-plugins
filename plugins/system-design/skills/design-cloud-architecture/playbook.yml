@@ -1,0 +1,57 @@
+version: 2
+name: design-cloud-architecture
+description: クラウドアーキテクチャのJSON正本と日本語Markdown正本を同じagentが宣言順に作る。
+inputs: [request, provider, requirements_baseline, logical_design, workload_model, quality_requirements, organizational_constraints, document_destination]
+instructions:
+  execution:
+    directive: 同じagentがstepsを上から順に実行し、失敗した工程を成功扱いせず停止する
+requires:
+  - {plugin: write-doc, marketplace: write-doc}
+steps:
+  - id: fix-upstream-evidence
+    agent_work: invoking_agent
+    purpose: "上流基準資料、入力providerの根拠制約、設計根拠を固定する"
+    needs: [provider]
+  - id: decide-deployment-boundary
+    agent_work: invoking_agent
+    purpose: "配置方式の境界を判定する"
+  - id: compare-alternatives
+    agent_work: invoking_agent
+    purpose: "機能領域ごとに代替案を比較する"
+  - id: record-adrs
+    agent_work: invoking_agent
+    purpose: "採用判断をADRへ固定する"
+  - id: design-failure-paths
+    agent_work: invoking_agent
+    purpose: "障害・縮退経路を設計する"
+  - id: draw-editable-infrastructure
+    agent_work: invoking_agent
+    purpose: "編集可能なインフラ構成図を作る"
+  - id: close-trace-and-verification
+    agent_work: invoking_agent
+    purpose: "要求トレーサビリティと検証計画を閉じる"
+  - id: confirm-question-inventory
+    agent_work: invoking_agent
+    purpose: "全質問の状態・解決・撤回理由・影響先を一覧提示し、一覧全体と対話終了の明示確認を得る"
+    provides: [question_review]
+  - id: validate-and-save-canonical
+    agent_work: invoking_agent
+    purpose: "scripts/architecture.pyでJSON正本を検査して保存する"
+    needs: [question_review]
+    provides: [architecture_artifact_path]
+  - id: compose-document-text
+    agent_work: invoking_agent
+    purpose: "保存したJSON正本と根拠資料から、日本語Markdown正本の本文を組み立てる"
+    needs: [architecture_artifact_path]
+    provides: [architecture_document_text]
+  - id: save-markdown-canonical
+    playbook: write-doc
+    purpose: "同じagentが本文をkind: textのmaterialにし、document_destinationの保存先だけを渡してcloud-architecture型の資料を1本保存する"
+    input:
+      document_type: cloud-architecture
+    needs: [architecture_document_text, document_destination]
+    provides: [architecture_document_path]
+  - id: read-back-document
+    agent_work: invoking_agent
+    purpose: "保存した資料を読み戻し、JSON正本のID、状態、根拠、ADR、図、未決、handoffが欠落・昇格していないことを確かめる"
+    needs: [architecture_artifact_path, architecture_document_path]
