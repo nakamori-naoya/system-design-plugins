@@ -25,6 +25,30 @@ class QualityContractTest(CanonCase):
         self.assertEqual(payload["measurable"], ["QR-001", "QR-002"])
         self.assertEqual(payload["open_conflicts"], ["QCON-001"])
 
+    def test_human_first_format_passes_without_fixed_headings(self) -> None:
+        body = """# 申請結果確認の非機能要件
+
+最優先で守る性質は、集中時にも申請者が結果を確認できることである。
+
+## 性能
+
+確認要求の95%を800ミリ秒以内に返す。
+
+## まだ決まっていないこと
+
+最大ピークは実測後に決める。
+
+## 追跡情報
+
+| ID | 守る性質 | 観測・検証 | 根拠と状態 |
+|---|---|---|---|
+| QR-001 | 集中時にも結果を確認できる | WL-001の負荷で成功率を測る | REQ-001、WL-001、hypothesis |
+| QR-OQ-001 | 最大ピーク | 試験導入で測る | WL-OQ-001、open_question |
+"""
+        payload = self.assert_pass(body)
+        self.assertEqual(payload["quality_requirements"], ["QR-001"])
+        self.assertEqual(payload["open_questions"], ["QR-OQ-001"])
+
     def test_upstream_required(self) -> None:
         self.arguments = []
         self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")

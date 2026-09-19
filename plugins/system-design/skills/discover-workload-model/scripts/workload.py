@@ -68,6 +68,56 @@ SRC = re.compile(r"^SRC-\d{3,}$")
 LOCAL_HYP_OR_OQ = re.compile(r"^WL-(HYP|OQ)-\d{3,}$")
 ANY_HYP_OR_OQ = re.compile(r"^[A-Z]{2,}-(HYP|OQ)-\d{3,}$")
 DIN_LABELS = ["根拠", "採用する仮定", "適用範囲", "要件への影響", "構成への影響", "見直し条件"]
+
+
+def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -> dict:
+    if doc.title is None:
+        fail("文書題名（H1）がありません")
+    intro = [line for line in doc.intro if line.strip()]
+    if not intro:
+        fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
+    if intro[0].lstrip().startswith(("|", ">", "- ", "* ")):
+        fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
+    if not doc.order:
+        fail("本文を判断単位へ分けるH2見出しがありません")
+    for name in doc.order:
+        if not any(line.strip() for line in doc.sections[name]):
+            fail(f"節が空です: {name}")
+    if "追跡情報" not in doc.sections:
+        fail("後続資料へ渡す設計入力の追跡情報がありません")
+
+    rows = single_table(doc, "追跡情報", ["ID", "設計入力", "根拠と状態", "影響する要求・判断"])
+    design_inputs: list[str] = []
+    workload_items: list[str] = []
+    open_questions: list[str] = []
+    for row in rows:
+        identifier = strip_markup(row["ID"])
+        if DIN.fullmatch(identifier):
+            registry.define(identifier, "追跡情報")
+            design_inputs.append(identifier)
+        elif WL.fullmatch(identifier):
+            registry.define(identifier, "追跡情報")
+            workload_items.append(identifier)
+        elif ANY_HYP_OR_OQ.fullmatch(identifier) and "-OQ-" in identifier:
+            if identifier.startswith("WL-"):
+                registry.define(identifier, "追跡情報")
+            else:
+                registry.resolve(identifier, "追跡情報.ID")
+            open_questions.append(identifier)
+        else:
+            fail(f"追跡情報のIDは DIN- / WL- / <接頭辞>-OQ- でなければなりません: {identifier}")
+        registry.resolve(row["影響する要求・判断"], f"{identifier}.影響する要求・判断")
+
+    return {
+        "verified": True,
+        "document_type": "workload-model",
+        "status": "unresolved" if open_questions else "ready",
+        "design_inputs": design_inputs,
+        "workload_items": workload_items,
+        "hypotheses": [],
+        "open_questions": open_questions,
+        "upstream": upstream,
+    }
 EVIDENCE_KINDS = ("公開情報", "実測", "利用者決定", "推定")
 APPLICABILITY = ("世界規模の参照値", "初期実装の合格値", "局所負荷")
 CONCERNS = ("容量", "分割", "非同期化", "流量制御", "保持", "削除")
@@ -101,10 +151,12 @@ def skew_table(doc: Document, title: str, columns: list[str]) -> list[dict[str, 
 
 def check(body: str, upstream: list[str]) -> dict:
     doc = Document(body)
-    doc.require_sections(SECTIONS)
     registry = Registry(LOCAL_FAMILIES, UPSTREAM_FAMILIES)
     for path_text in upstream:
         registry.add_upstream(read_upstream(path_text), path_text)
+    if doc.order != SECTIONS:
+        return check_human_format(doc, registry, upstream)
+    doc.require_sections(SECTIONS)
 
     sources = single_table(doc, "調査根拠", ["根拠ID", "出典", "観測時点", "使った設計入力"])
     for row in sources:

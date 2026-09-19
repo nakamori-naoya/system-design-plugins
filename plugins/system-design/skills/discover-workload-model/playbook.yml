@@ -44,12 +44,12 @@ steps:
     provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として見直し条件と未決へ書き、採用する仮定を先頭に置いたtemplateの記法で本文をインメモリで組み立てる"
+    purpose: "決定と未決を根拠状態を保って反映し、既存資料の体裁またはtemplateの論点を使い、結論と採用値を先に置いた自然な本文を組み立てる"
     needs: [decisions, open_questions]
     provides: [workload_document_text]
   - id: verify
     script: scripts/workload.py
-    purpose: "本文を標準入力、要求発見正本を--upstreamで受け、H2の集合と順序、DIN・WL・SRCの一意性と参照到達（上流REQ/DRV/CONを含む）、根拠種別と適用範囲の語彙、率の数値と単位、推定の計算式、全DINの接続と全WLの保持行、未決の検証計画を述語として検査し、statusとID一覧を返す"
+    purpose: "本文を標準入力、要求発見正本を--upstreamで受け、読み手向けMarkdownの構造と上流正本を読めることを検査し、statusと本文にある追跡ID一覧を返す"
     needs: [workload_document_text, requirements_document_path]
     provides: [verification_result]
   - id: save-markdown-canonical
