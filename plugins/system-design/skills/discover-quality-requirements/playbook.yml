@@ -38,12 +38,12 @@ steps:
     provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として仮説と未決へ書き、templateの記法で本文をインメモリで組み立てる"
+    purpose: "決定と未決を根拠状態を保って反映し、既存資料の体裁またはtemplateの論点を使い、品質ごとの自然な見出しと文章で本文を組み立てる"
     needs: [decisions, open_questions]
     provides: [quality_document_text]
   - id: verify
     script: scripts/quality.py
-    purpose: "本文を標準入力、要求発見と利用負荷の正本を--upstreamで受け、H2の集合と順序、QR・QCONの一意性と参照到達、分類10語と閾値の記法、10区分の網羅、未決の区分と open の矛盾が問いへ結ばれること、全QRの追跡を述語として検査し、statusとID一覧を返す"
+    purpose: "本文を標準入力、要求発見と利用負荷の正本を--upstreamで受け、読み手向けMarkdownの構造と上流正本を読めることを検査し、statusと本文にある追跡ID一覧を返す"
     needs: [quality_document_text, requirements_document_path, workload_document_path]
     provides: [verification_result]
   - id: save-markdown-canonical
