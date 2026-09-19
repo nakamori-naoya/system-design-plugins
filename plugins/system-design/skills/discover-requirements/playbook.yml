@@ -33,7 +33,7 @@ steps:
     purpose: "コマンド、クエリ、イベントを棚卸しし、対になる操作を反証する"
   - id: derive-service-requirements
     agent_work: invoking_agent
-    purpose: "サービス特性から導出要件を因果付きで作る"
+    purpose: "サービス特性から、入力に直接書かれていない避けるべき失敗と必要な性質を因果で導き、読者向け本文へ残す"
   - id: separate-decisions-and-details
     agent_work: invoking_agent
     purpose: "理由付き設計判断を残し、実装詳細を後続へ送る"

@@ -25,6 +25,32 @@ class WorkloadContractTest(CanonCase):
         self.assertEqual(payload["workload_items"], ["WL-001", "WL-002"])
         self.assertEqual(payload["open_questions"], ["WL-OQ-001", "REQ-OQ-001"])
 
+    def test_human_first_format_passes_without_fixed_headings(self) -> None:
+        body = """# 申請結果確認の利用規模と負荷モデル
+
+初期設計では確認要求80件/秒を1分ピークとして扱う。
+
+## 結論
+
+月20万件、平均2件/秒、1分ピーク80件/秒と仮定する。
+
+## まだ決まっていないこと
+
+確定日の集中倍率は実測後に決める。
+
+## 追跡情報
+
+| ID | 設計入力 | 根拠と状態 | 影響する要求・判断 |
+|---|---|---|---|
+| DIN-001 | 月間活動時間10万秒 | 推定、hypothesis | REQ-001 |
+| WL-001 | 確認80件/秒 | 推定、hypothesis | REQ-001、DRV-001 |
+| WL-OQ-001 | 集中倍率 | open_question | 最大容量 |
+"""
+        payload = self.assert_pass(body)
+        self.assertEqual(payload["design_inputs"], ["DIN-001"])
+        self.assertEqual(payload["workload_items"], ["WL-001"])
+        self.assertEqual(payload["open_questions"], ["WL-OQ-001"])
+
     def test_upstream_is_required_for_upstream_references(self) -> None:
         self.arguments = []
         self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")

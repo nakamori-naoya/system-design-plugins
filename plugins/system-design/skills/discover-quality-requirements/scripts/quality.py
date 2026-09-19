@@ -66,12 +66,64 @@ LOCAL_FAMILIES = {"QR", "QCON", "QR-HYP", "QR-OQ"}
 UPSTREAM_FAMILIES = {"REQ", "DRV", "CON", "REQ-HYP", "REQ-OQ", "WL", "DIN", "WL-HYP", "WL-OQ"}
 
 
+def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -> dict:
+    if doc.title is None:
+        fail("文書題名（H1）がありません")
+    intro = [line for line in doc.intro if line.strip()]
+    if not intro:
+        fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
+    if intro[0].lstrip().startswith(("|", ">", "- ", "* ")):
+        fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
+    if not doc.order:
+        fail("本文を判断単位へ分けるH2見出しがありません")
+    for name in doc.order:
+        if not any(line.strip() for line in doc.sections[name]):
+            fail(f"節が空です: {name}")
+    if "追跡情報" not in doc.sections:
+        fail("後続資料へ渡す品質要求の追跡情報がありません")
+
+    rows = single_table(doc, "追跡情報", ["ID", "守る性質", "観測・検証", "根拠と状態"])
+    requirements: list[str] = []
+    measurable: list[str] = []
+    open_questions: list[str] = []
+    for row in rows:
+        identifier = strip_markup(row["ID"])
+        if QR.fullmatch(identifier):
+            registry.define(identifier, "追跡情報")
+            requirements.append(identifier)
+            state = one_state(row["根拠と状態"], QR_STATES, f"{identifier}.根拠と状態")
+            if state != "open_question":
+                measurable.append(identifier)
+        elif LOCAL_HYP_OR_OQ.fullmatch(identifier) and "-OQ-" in identifier:
+            registry.define(identifier, "追跡情報")
+            one_state(row["根拠と状態"], ("open_question",), f"{identifier}.根拠と状態")
+            open_questions.append(identifier)
+        else:
+            fail(f"追跡情報のIDは QR-<数字> または QR-OQ-<数字> でなければなりません: {identifier}")
+        registry.resolve(row["根拠と状態"], f"{identifier}.根拠と状態")
+
+    return {
+        "verified": True,
+        "document_type": "quality-requirements",
+        "status": "unresolved" if open_questions else "ready",
+        "quality_requirements": requirements,
+        "measurable": measurable,
+        "conflicts": [],
+        "open_conflicts": [],
+        "hypotheses": [],
+        "open_questions": open_questions,
+        "upstream": upstream,
+    }
+
+
 def check(body: str, upstream: list[str]) -> dict:
     doc = Document(body)
-    doc.require_sections(SECTIONS)
     registry = Registry(LOCAL_FAMILIES, UPSTREAM_FAMILIES)
     for path_text in upstream:
         registry.add_upstream(read_upstream(path_text), path_text)
+    if doc.order != SECTIONS:
+        return check_human_format(doc, registry, upstream)
+    doc.require_sections(SECTIONS)
 
     requirements = single_table(
         doc, "品質要求",
