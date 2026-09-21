@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""品質要求正本（quality-requirements型のMarkdown）の構造契約を検査する。
+"""品質要求資料（quality-requirements型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/quality.py check [--upstream <上流正本の絶対path> ...] < <正本の本文（Markdown）>
+  python3 scripts/quality.py check [--upstream <上流資料の絶対path> ...] < <品質要求資料の本文（Markdown）>
 
-入力は標準入力の本文と、`--upstream` で渡した上流正本（要求発見・利用負荷モデル）のpathだけである。REQ- / DRV- /
-CON- / WL- / DIN- と上流の HYP / OQ の参照は上流正本で定義されたIDへ到達しなければならない。一時fileは作らず、保存は
+入力は標準入力の本文と、`--upstream` で渡した上流資料（要求発見・利用負荷モデル）のpathだけである。REQ- / DRV- /
+CON- / WL- / DIN- と上流の HYP / OQ の参照は上流資料で定義されたIDへ到達しなければならない。一時fileは作らず、保存は
 write-docが行う。通ったときに言えるのは次だけであり、閾値の妥当性や矛盾の扱いの適否は言わない。
 
   - H2見出しがtemplateの名前と順序に一致し、冒頭に本文段落があり、どの節も空でない
@@ -280,7 +280,7 @@ def check(body: str, upstream: list[str]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
-    parser.add_argument("--upstream", action="append", default=[], help="上流正本（要求発見・利用負荷モデル）の絶対path。複数可")
+    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要求発見・利用負荷モデル）の絶対path。複数可")
     args = parser.parse_args()
     try:
         result = check(read_stdin(), args.upstream)

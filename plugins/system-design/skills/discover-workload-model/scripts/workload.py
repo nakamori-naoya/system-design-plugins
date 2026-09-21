@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""利用負荷モデル正本（workload-model型のMarkdown）の構造契約を検査する。
+"""利用負荷モデル資料（workload-model型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/workload.py check [--upstream <要求発見正本の絶対path> ...] < <正本の本文（Markdown）>
+  python3 scripts/workload.py check [--upstream <要求発見資料の絶対path> ...] < <利用負荷モデル資料の本文（Markdown）>
 
-入力は標準入力の本文と、`--upstream` で渡した上流正本（要求発見）のpathだけである。REQ- / DRV- / CON- /
-REQ-HYP- / REQ-OQ- の参照は上流正本で定義されたIDへ到達しなければならない。一時fileは作らず、保存はwrite-docが行う。
+入力は標準入力の本文と、`--upstream` で渡した上流資料（要求発見）のpathだけである。REQ- / DRV- / CON- /
+REQ-HYP- / REQ-OQ- の参照は上流資料で定義されたIDへ到達しなければならない。一時fileは作らず、保存はwrite-docが行う。
 通ったときに言えるのは次だけであり、数値の妥当性や採用仮定の適否は言わない。
 
   - H2見出しがtemplateの名前と順序に一致し、冒頭に本文段落があり、どの節も空でない
@@ -306,7 +306,7 @@ def check(body: str, upstream: list[str]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
-    parser.add_argument("--upstream", action="append", default=[], help="上流正本（要求発見）の絶対path。複数可")
+    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要求発見）の絶対path。複数可")
     args = parser.parse_args()
     try:
         result = check(read_stdin(), args.upstream)

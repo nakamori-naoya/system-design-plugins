@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """design-cloud-architecture の検査script（architecture.py）の正例・反例・境界例。
 
-正本: write-docの cloud-architecture template が定める記法（scriptのdocstringに述語を列挙）。
-入力: 標準入力のMarkdown本文、--provider、--upstream の要求発見・利用負荷・品質要求正本（fixture）。
+基準資料: write-docの cloud-architecture template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文、--provider、--upstream の要求発見・利用負荷・品質要求資料（fixture）。
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class ArchitectureContractTest(CanonCase):
     def test_upstream_reference_and_missing_upstream(self) -> None:
         self.assert_fail(self.mutate("| REQ-001 | agreed_decision | 申請者が確定した", "| REQ-002 | agreed_decision | 申請者が確定した"), "上流参照が未解決です: REQ-002")
         self.arguments = ["--provider", "aws"]
-        self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")
+        self.assert_fail(self.body(), "--upstream で上流資料が渡されていません")
 
     def test_status_ready_requires_accepted_adr_and_no_open_question(self) -> None:
         body = self.body()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""package共有の terminology.py（用語正本と、それを参照するMarkdown正本の整合）の正例・反例・境界例。
+"""package共有の terminology.py（用語定義と、それを参照するMarkdown資料の整合）の正例・反例・境界例。
 
-正本: 用語正本fixture（tests/fixtures/terminology/success.md）と、要求発見fixtureの `## 用語` / `## コマンドとクエリ`。
-入力: --terminology の用語正本と --artifact の正本Markdown。fixture fileは書き換えず、変種は一時directoryへ置く。
+基準資料: 用語定義fixture（tests/fixtures/terminology/success.md）と、要求発見fixtureの `## 用語` / `## コマンドとクエリ`。
+入力: --terminology の用語定義と --artifact の基準資料Markdown。fixture fileは書き換えず、変種は一時directoryへ置く。
 """
 
 from __future__ import annotations
@@ -58,14 +58,14 @@ class TerminologyContractTest(unittest.TestCase):
             artifact = self.artifact_with(root, glossary, replace=("推奨用語名: 申請結果を確定する", "推奨用語名: 未登録用語、申請結果を確定する"))
             result = self.call(glossary, artifact)
             self.assertEqual(result.returncode, 2)
-            self.assertIn("用語正本にない推奨用語名", result.stderr)
+            self.assertIn("用語定義にない推奨用語名", result.stderr)
 
-            artifact = self.artifact_with(root, glossary, replace=(f"用語正本: {glossary} 版: 1", "用語正本: なし"))
+            artifact = self.artifact_with(root, glossary, replace=(f"用語定義: {glossary} 版: 1", "用語定義: なし"))
             result = self.call(glossary, artifact)
             self.assertEqual(result.returncode, 2)
-            self.assertIn("用語正本を参照していません", result.stderr)
+            self.assertIn("用語定義を参照していません", result.stderr)
 
-            artifact = self.artifact_with(root, glossary, replace=(f"用語正本: {glossary} 版: 1", f"用語正本: {root / 'other.md'} 版: 1"))
+            artifact = self.artifact_with(root, glossary, replace=(f"用語定義: {glossary} 版: 1", f"用語定義: {root / 'other.md'} 版: 1"))
             result = self.call(glossary, artifact)
             self.assertEqual(result.returncode, 2)
             self.assertIn("locatorが不一致", result.stderr)
@@ -78,12 +78,12 @@ class TerminologyContractTest(unittest.TestCase):
             artifact = self.artifact_with(root, glossary, replace=("| 申請結果を確認する | クエリ |", "| 申請結果を照会する | クエリ |"))
             result = self.call(glossary, artifact)
             self.assertEqual(result.returncode, 2)
-            self.assertIn("用語正本にない操作名", result.stderr)
+            self.assertIn("用語定義にない操作名", result.stderr)
 
             artifact = self.artifact_with(root, glossary, replace=("| 申請結果を確認する | クエリ | 申請結果が確認された | クエリ |", "| 申請結果を確認する | コマンド | 申請結果が確認された | コマンド |"))
             result = self.call(glossary, artifact)
             self.assertEqual(result.returncode, 2)
-            self.assertIn("概念種別が用語正本と一致しません", result.stderr)
+            self.assertIn("概念種別が用語定義と一致しません", result.stderr)
 
     def test_duplicate_preferred_label_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

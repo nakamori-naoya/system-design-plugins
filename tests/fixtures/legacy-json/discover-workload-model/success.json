@@ -290,7 +290,7 @@
           ],
           "confidence": "high",
           "calculation": "合意済み方針の値",
-          "verification_plan": "要求正本の保持制約の版を照合する",
+          "verification_plan": "要求資料の保持制約の版を照合する",
           "sensitivity": "保持期間変更時に蓄積量見込みを再計算する",
           "open_question_ids": []
         },

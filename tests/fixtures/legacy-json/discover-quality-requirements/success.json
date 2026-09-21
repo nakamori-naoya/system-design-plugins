@@ -358,7 +358,7 @@
     {
       "category": "durability",
       "disposition": "not_applicable",
-      "rationale": "エンドポイントは正本となる永続記録を所有しない",
+      "rationale": "エンドポイントは一次データとなる永続記録を所有しない",
       "quality_requirement_ids": [],
       "open_question_ids": []
     },

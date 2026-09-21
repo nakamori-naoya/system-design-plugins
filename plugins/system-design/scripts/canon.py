@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""system-design 4入口が共有する、Markdown正本の構文解析と共通述語。
+"""system-design 4入口が共有する、Markdown資料の構文解析と共通述語。
 
 このmoduleは意味を評価しない。読むのは、write-docのtemplateが定める記法（H2見出しの名前と順序、
 `### <ID>: <一文>` の小見出しとそのラベル行、表の見出し行と本文行、`<接頭辞>-<数字>` のID、
 根拠状態の機械値）だけである。各入口のscriptはこのmoduleを使って、自分の型に固有の述語を重ねる。
 
-  - 入力は標準入力の本文（UTF-8 Markdown）と、引数で渡された上流正本のpathだけ。一時fileは作らない。
+  - 入力は標準入力の本文（UTF-8 Markdown）と、引数で渡された上流基準資料のpathだけ。一時fileは作らない。
   - 失敗は ContractError で診断を返し、呼び手が `FAIL: <理由>` を標準エラーへ書いて終了code 2にする。
 """
 
@@ -34,10 +34,10 @@ def fail(message: str) -> None:
 
 def read_stdin() -> str:
     if sys.stdin.isatty():
-        fail("正本の本文を標準入力で渡す")
+        fail("基準資料の本文を標準入力で渡す")
     body = sys.stdin.read()
     if not body.strip():
-        fail("標準入力が空。正本の本文を標準入力で渡す")
+        fail("標準入力が空。基準資料の本文を標準入力で渡す")
     return body
 
 
@@ -284,7 +284,7 @@ def number_with_unit(cell: str, label: str, *, placeholders: tuple[str, ...] = (
 
 
 class Registry:
-    """この正本で定義したIDと、上流正本で定義したID。参照到達の正解をここから導く。"""
+    """この基準資料で定義したIDと、上流資料で定義したID。参照到達の正解をここから導く。"""
 
     def __init__(self, local_families: set[str], upstream_families: set[str]) -> None:
         self.local_families = local_families
@@ -327,7 +327,7 @@ class Registry:
                 if identifier in self.upstream or identifier in self.local:
                     continue
                 if not self.upstream_given:
-                    fail(f"{where} が上流のID {identifier} を参照していますが、--upstream で上流正本が渡されていません")
+                    fail(f"{where} が上流のID {identifier} を参照していますが、--upstream で上流資料が渡されていません")
                 fail(f"{where} の上流参照が未解決です: {identifier}")
         return found
 
@@ -336,32 +336,32 @@ class Registry:
 
 
 def terminology_lines(doc: Document, section: str = "用語") -> tuple[str | None, int | None, list[str]]:
-    """`用語正本: <絶対path> 版: <整数>` または `用語正本: なし`、続く `推奨用語名: a、b` を読む。"""
+    """`用語定義: <絶対path> 版: <整数>` または `用語定義: なし`、続く `推奨用語名: a、b` を読む。"""
     lines = [strip_markup(line) for line in doc.lines(section) if line.strip()]
     if not lines:
         fail("節「用語」が空です")
-    head = re.match(r"^用語正本[:：]\s*(.+?)\s*(?:版[:：]\s*(\d+))?$", lines[0])
+    head = re.match(r"^用語定義[:：]\s*(.+?)\s*(?:版[:：]\s*(\d+))?$", lines[0])
     if head is None:
-        fail("節「用語」の1行目は `用語正本: <絶対path> 版: <整数>` または `用語正本: なし` でなければなりません")
+        fail("節「用語」の1行目は `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` でなければなりません")
     locator = head.group(1).strip()
     if locator == "なし":
         if head.group(2) is not None:
-            fail("`用語正本: なし` に版を書けません")
+            fail("`用語定義: なし` に版を書けません")
         return None, None, []
     if head.group(2) is None:
-        fail("用語正本を参照するときは `版: <整数>` が必要です")
+        fail("用語定義を参照するときは `版: <整数>` が必要です")
     version = int(head.group(2))
     if version < 1:
-        fail("用語正本の版は1以上の整数でなければなりません")
+        fail("用語定義の版は1以上の整数でなければなりません")
     if not Path(locator).is_absolute():
-        fail(f"用語正本の所在は絶対pathでなければなりません: {locator}")
+        fail(f"用語定義の所在は絶対pathでなければなりません: {locator}")
     terms: list[str] = []
     for line in lines[1:]:
         match = re.match(r"^推奨用語名[:：]\s*(.+)$", line)
         if match:
             terms = [item.strip() for item in re.split(r"[、,]", match.group(1)) if item.strip()]
     if not terms:
-        fail("用語正本を参照するときは `推奨用語名: <名>、<名>` の行が必要です")
+        fail("用語定義を参照するときは `推奨用語名: <名>、<名>` の行が必要です")
     if len(set(terms)) != len(terms):
         fail("推奨用語名に重複があります")
     return locator, version, terms
