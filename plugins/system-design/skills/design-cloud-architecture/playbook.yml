@@ -1,9 +1,9 @@
-# design-cloud-architecture — 上流資料と入力providerからクラウドアーキテクチャ正本（cloud-architecture型のMarkdown）を1本作る。
+# design-cloud-architecture — 上流資料と入力providerからクラウドアーキテクチャ資料（cloud-architecture型のMarkdown）を1本作る。
 # 工程順と入出力だけを持つ。判断規律はSKILL.mdとreferencesが持つ。対話の作法はgrillの公開契約が持つ。
 # 本文はagentがインメモリで保持し、検査scriptへは標準入力で渡す。JSONも一時fileも作らず、保存はwrite-docが行う。
 version: 2
 name: design-cloud-architecture
-description: 要求・負荷・品質・制約と入力providerから、選定・代替案・ADR・障害経路・編集可能な図・追跡を持つクラウドアーキテクチャ正本（Markdown）を同じagentが宣言順に作る。
+description: 要求・負荷・品質・制約と入力providerから、選定・代替案・ADR・障害経路・編集可能な図・追跡を持つクラウドアーキテクチャ資料（Markdown）を同じagentが宣言順に作る。
 inputs: [request, references, provider, requirements_document_path, logical_design, workload_document_path, quality_document_path, organizational_constraints, document_destination]
 instructions:
   execution:
@@ -14,7 +14,7 @@ requires:
 steps:
   - id: fix-upstream-evidence
     agent_work: invoking_agent
-    purpose: "依頼、referencesの資料、上流正本、論理設計、制約を読み、入力providerの根拠制約（CON-、agreed_decision）と設計根拠を固定する"
+    purpose: "依頼、referencesの資料、上流資料、論理設計、制約を読み、入力providerの根拠制約（CON-、agreed_decision）と設計根拠を固定する"
     needs: [request, references, provider, requirements_document_path, logical_design, workload_document_path, quality_document_path, organizational_constraints]
   - id: decide-deployment-boundary
     agent_work: invoking_agent
@@ -46,7 +46,7 @@ steps:
     provides: [architecture_document_text]
   - id: verify
     script: scripts/architecture.py
-    purpose: "本文を標準入力、providerを--provider、上流3正本を--upstreamで受け、H2の集合と順序、providerの根拠制約と一致、12選定項目と状態、NODE・ADR・FAILの一意性と参照到達、mermaidに全NODEが現れること、全ADR・NODEの追跡、未決の問いへの接続を述語として検査し、statusとID一覧を返す"
+    purpose: "本文を標準入力、providerを--provider、上流3資料を--upstreamで受け、H2の集合と順序、providerの根拠制約と一致、12選定項目と状態、NODE・ADR・FAILの一意性と参照到達、mermaidに全NODEが現れること、全ADR・NODEの追跡、未決の問いへの接続を述語として検査し、statusとID一覧を返す"
     needs: [architecture_document_text, provider, requirements_document_path, workload_document_path, quality_document_path]
     provides: [verification_result]
   - id: save-markdown-canonical

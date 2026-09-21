@@ -1,7 +1,7 @@
 {
   "playbook": "discover-quality-requirements",
   "scenario": "abnormal",
-  "request": "未確定事項を含む正本を作る",
+  "request": "未確定事項を含む資料を作る",
   "referenced_artifacts": [],
   "grill": {
     "status": "completed",

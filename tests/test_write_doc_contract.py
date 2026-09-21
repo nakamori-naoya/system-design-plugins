@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """各公開skillが grill で問い、検査scriptを標準入力で通し、write-docの公開契約へ本文を渡す構造を検査する。
 
-正本: 各公開入口のplaybook.ymlと `プラグイン間依存の規則.md`（外部依存はrequires + playbook:だけ）。
+基準資料: 各公開入口のplaybook.ymlと `プラグイン間依存の規則.md`（外部依存はrequires + playbook:だけ）。
 入力: 4入口のplaybook.yml。実モデルもgrillもwrite-docも呼ばない。
 正規化: yqでYAMLをJSON化し、requiresとstepsのlistを読む。
 合格述語: requiresに{plugin: grill, marketplace: grill}と{plugin: write-doc, marketplace: write-doc}があり、
   `playbook: grill`の工程が `verify`（入口のscripts/配下の検査script）より前に、`playbook: write-doc`の工程が
   `verify` より後にあり、write-docの`input.document_type`が入口ごとの文書型slugと一致し、
-  公開入力に `references` があり、外部packageをskill:/script:で呼ばず、JSON正本を保存する工程が無い。
+  公開入力に `references` があり、外部packageをskill:/script:で呼ばず、JSON資料を保存する工程が無い。
 診断: 違反した入口と項目を示す。
 正例: 4入口。反例: requires無し、verifyより前のwrite-doc、別の文書型、skill:でwrite-docを呼ぶ、JSON保存工程の残存。
 境界例: write-doc工程の`input`は文書型だけを固定し、materialや保存先は実行時の値なのでここでは検査しない。

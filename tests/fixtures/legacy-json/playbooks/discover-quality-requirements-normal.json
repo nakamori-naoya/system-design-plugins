@@ -1,7 +1,7 @@
 {
   "playbook": "discover-quality-requirements",
   "scenario": "normal",
-  "request": "日本語の正本を作る",
+  "request": "日本語資料を作る",
   "referenced_artifacts": [],
   "grill": {
     "status": "completed",

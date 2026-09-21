@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """discover-requirements の検査script（requirements.py）の正例・反例・境界例。
 
-正本: write-docの requirements-discovery template が定める記法（scriptのdocstringに述語を列挙）。
-入力: 標準入力のMarkdown本文だけ（上流正本を持たない）。
+基準資料: write-docの requirements-discovery template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文だけ（上流資料を持たない）。
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class RequirementsContractTest(CanonCase):
         self.assert_fail(head + "## 根拠\n" + rest.split("## 後続設計で決める論点\n", 1)[0] + "## 用語\n" + terms + "## 後続設計で決める論点\n" + rest.split("## 後続設計で決める論点\n", 1)[1], "順序に一致しません")
 
     def test_intro_must_be_a_paragraph(self) -> None:
-        self.assert_fail(self.mutate("**この正本は", "> **この正本は"), "冒頭は本文段落で始める")
+        self.assert_fail(self.mutate("**この基準資料は", "> **この基準資料は"), "冒頭は本文段落で始める")
 
     def test_hypothesis_evidence_cannot_become_requirement(self) -> None:
         self.assert_fail(
@@ -89,8 +89,8 @@ class RequirementsContractTest(CanonCase):
 
     def test_terminology_absent_is_a_boundary_case(self) -> None:
         body = self.mutate(
-            "用語正本: " + str(FIXTURES / "terminology/success.md") + " 版: 1\n推奨用語名: 申請結果を確定する、申請結果の確定を取り消す、申請結果を確認する、申請者",
-            "用語正本: なし",
+            "用語定義: " + str(FIXTURES / "terminology/success.md") + " 版: 1\n推奨用語名: 申請結果を確定する、申請結果の確定を取り消す、申請結果を確認する、申請者",
+            "用語定義: なし",
         )
         payload = self.assert_pass(body)
         self.assertIsNone(payload["terminology"])

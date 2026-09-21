@@ -22,7 +22,7 @@
 | リージョン/AZ | 東京リージョン・2AZ | 東京＋大阪の複数リージョン | QR-001、CON-001 | AZ障害に耐えつつ運用対象を増やさない | リージョン障害への継続性を持たない | hypothesis |
 | 計算処理 | ECS on Fargate | EKS、Lambda | REQ-001、WL-001、CON-001 | 常駐APIを保ちつつ制御面の運用を減らせる | コンテナの更新と容量検証は残る | hypothesis |
 | ネットワーク | VPC＋Application Load Balancer | API Gateway直結 | WL-001、QR-001 | 2AZへの振り分けを同じ構成で扱える | ALBの費用が固定で残る | hypothesis |
-| ストレージ | S3（静的資産とバックアップ置き場） | EFS | WL-001 | 静的資産の配信とバックアップ先を分けずに済む | 結果データの正本には使わない | hypothesis |
+| ストレージ | S3（静的資産とバックアップ置き場） | EFS | WL-001 | 静的資産の配信とバックアップ先を分けずに済む | 結果データの参照元には使わない | hypothesis |
 | データベース | Aurora PostgreSQL互換 | RDS for PostgreSQL、DynamoDB | REQ-001、QR-001 | 複数AZを同じ境界で扱える | 費用とフェイルオーバー時間を検証する必要がある | hypothesis |
 | メッセージング | 非該当 | SQS | REQ-001 | 該当なし | 確認は読み取りだけで非同期の配送が無い。通知経路は `REQ-OQ-001` の決定後に再評価する | not_applicable |
 | ID管理 | 非該当 | Cognito | CON-001 | 該当なし | 利用者認証は組織のID基盤へ委ねる | not_applicable |
@@ -82,8 +82,8 @@ flowchart LR
 | ARC-HYP-001 | hypothesis | 単一リージョン・複数AZで `QR-001` を満たせる | 入口とデータベースの可用性単位 | 障害注入と月額費用を検証する | ADR-001、NODE-EDGE、NODE-DB |
 | ARC-OQ-001 | open_question | リージョン障害時に何時間で復旧すべきか | バックアップ/DR、リージョン数 | `QR-OQ-001` を事業責任者と合意する | ADR-001、NODE-DB |
 | WL-OQ-001 | open_question | 確定日の集中倍率は上流で未決のため継続する | 最大タスク数、DB容量、費用 | 直近2四半期の確認記録を取得する | ADR-001、NODE-API、NODE-DB |
-| REQ-OQ-001 | open_question | 確認経路は上流で未決のため継続する | エッジ | 事業責任者の決定を要求発見正本へ戻す | ADR-001、NODE-EDGE |
+| REQ-OQ-001 | open_question | 確認経路は上流で未決のため継続する | エッジ | 事業責任者の決定を要求発見資料へ戻す | ADR-001、NODE-EDGE |
 
 ## この資料に書かないもの
 
-要求、利用場面、業務ルール、論理データモデルはそれぞれの正本で扱う。アプリケーション内部のクラスやAPI契約、Terraformコード、監視と復旧の具体的な操作手順も、この資料の対象外である。
+要求、利用場面、業務ルール、論理データモデルはそれぞれの基準資料で扱う。アプリケーション内部のクラスやAPI契約、Terraformコード、監視と復旧の具体的な操作手順も、この資料の対象外である。
