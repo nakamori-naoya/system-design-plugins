@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""用語正本（見出し形式のMarkdown）と、それを参照する正本（Markdown）の整合を検査する。
+"""用語定義（見出し形式のMarkdown）と、それを参照する基準資料（Markdown）の整合を検査する。
 
-  python3 terminology.py check --terminology <用語正本の絶対path> --artifact <正本Markdownの絶対path> [--artifact ...]
+  python3 terminology.py check --terminology <用語定義の絶対path> --artifact <基準資料Markdownの絶対path> [--artifact ...]
 
-用語正本は frontmatter（version / subject）と、概念種別の H2 見出しの下に `### 推奨用語名` を置く形である。
-参照側の正本は `## 用語` 節に `用語正本: <絶対path> 版: <整数>` と `推奨用語名: <名>、<名>` を持つ。
+用語定義は frontmatter（version / subject）と、概念種別の H2 見出しの下に `### 推奨用語名` を置く形である。
+参照側の基準資料は `## 用語` 節に `用語定義: <絶対path> 版: <整数>` と `推奨用語名: <名>、<名>` を持つ。
 通ったときに言えるのは次だけである。
 
-  - 用語正本が表を使わず、既知の概念種別見出しの下に重複しない推奨用語名を置き、各用語が定義・状態・根拠・見直し条件を持つ
-  - 各参照側正本の `## 用語` が同じ用語正本（path）と同じ版を指し、列挙した推奨用語名がすべて用語正本にある
-  - 参照側正本に `## コマンドとクエリ` の表があれば、種別が コマンド / クエリ の操作名が用語正本の同じ概念種別（コマンド / クエリ）の推奨用語名である
+  - 用語定義が表を使わず、既知の概念種別見出しの下に重複しない推奨用語名を置き、各用語が定義・状態・根拠・見直し条件を持つ
+  - 各参照側基準資料の `## 用語` が同じ用語定義（path）と同じ版を指し、列挙した推奨用語名がすべて用語定義にある
+  - 参照側基準資料に `## コマンドとクエリ` の表があれば、種別が コマンド / クエリ の操作名が用語定義の同じ概念種別（コマンド / クエリ）の推奨用語名である
 
-exit 0 = 通った（stdoutに用語正本の絶対path） / 2 = 述語が成り立たない（診断は標準エラー `FAIL: <理由>`）。
+exit 0 = 通った（stdoutに用語定義の絶対path） / 2 = 述語が成り立たない（診断は標準エラー `FAIL: <理由>`）。
 """
 
 from __future__ import annotations
@@ -55,41 +55,41 @@ def fail(message: str) -> None:
 def parse_frontmatter(text: str) -> tuple[int, str, str]:
     match = re.match(r"\A---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if match is None:
-        fail("用語正本にversionとsubjectを持つfrontmatterがありません")
+        fail("用語定義にversionとsubjectを持つfrontmatterがありません")
     values: dict[str, str] = {}
     for line in match.group(1).splitlines():
         key, separator, value = line.partition(":")
         if not separator or not key.strip() or not value.strip():
-            fail("用語正本のfrontmatterが不正です")
+            fail("用語定義のfrontmatterが不正です")
         key = key.strip()
         if key in values:
-            fail(f"用語正本のfrontmatter keyが重複しています: {key}")
+            fail(f"用語定義のfrontmatter keyが重複しています: {key}")
         values[key] = value.strip()
     if set(values) != {"version", "subject"}:
-        fail("用語正本のfrontmatterはversionとsubjectだけを持たなければなりません")
+        fail("用語定義のfrontmatterはversionとsubjectだけを持たなければなりません")
     try:
         version = int(values["version"])
     except ValueError:
-        fail("用語正本.versionは1以上の整数でなければなりません")
+        fail("用語定義.versionは1以上の整数でなければなりません")
     if version < 1:
-        fail("用語正本.versionは1以上の整数でなければなりません")
+        fail("用語定義.versionは1以上の整数でなければなりません")
     return version, values["subject"], text[match.end():]
 
 
 def validate_terminology_markdown(path: Path) -> tuple[int, dict[str, str]]:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
-        fail(f"用語正本は絶対pathのregular fileでなければなりません: {path}")
+        fail(f"用語定義は絶対pathのregular fileでなければなりません: {path}")
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        fail(f"用語正本をUTF-8 Markdownとして読めません: {exc}")
+        fail(f"用語定義をUTF-8 Markdownとして読めません: {exc}")
     version, subject, body = parse_frontmatter(text)
     if not subject:
-        fail("用語正本.subjectは非空でなければなりません")
+        fail("用語定義.subjectは非空でなければなりません")
     if re.search(r"^\s*\|.*\|\s*$", body, re.MULTILINE):
-        fail("用語正本はMarkdown表ではなく概念種別ごとの見出しで記載してください")
+        fail("用語定義はMarkdown表ではなく概念種別ごとの見出しで記載してください")
     if re.search(r"^#\s+\S", body, re.MULTILINE) is None:
-        fail("用語正本に文書題名の見出しがありません")
+        fail("用語定義に文書題名の見出しがありません")
 
     current_category: str | None = None
     terms: dict[str, dict[str, Any]] = {}
@@ -114,7 +114,7 @@ def validate_terminology_markdown(path: Path) -> tuple[int, dict[str, str]]:
         if current_term is not None:
             terms[current_term]["lines"].append(raw_line)
     if not terms:
-        fail("用語正本に用語見出しが1件以上必要です")
+        fail("用語定義に用語見出しが1件以上必要です")
 
     required_labels = {"状態", "根拠", "見直し条件"}
     for term, value in terms.items():
@@ -138,15 +138,15 @@ def validate_terminology_markdown(path: Path) -> tuple[int, dict[str, str]]:
 
 def load_markdown(path: Path) -> Document:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
-        fail(f"正本は絶対pathのregular fileでなければなりません: {path}")
+        fail(f"基準資料は絶対pathのregular fileでなければなりません: {path}")
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        fail(f"正本をUTF-8 Markdownとして読めません: {exc}")
+        fail(f"基準資料をUTF-8 Markdownとして読めません: {exc}")
     try:
         return Document(text)
     except ValueError as exc:
-        fail(f"正本の構文が不正です: {path}: {exc}")
+        fail(f"基準資料の構文が不正です: {path}: {exc}")
     return Document("")
 
 
@@ -158,22 +158,22 @@ def validate_reference(
 ) -> None:
     document = load_markdown(artifact_path)
     if "用語" not in document.sections:
-        fail(f"正本に `## 用語` 節がありません: {artifact_path}")
+        fail(f"基準資料に `## 用語` 節がありません: {artifact_path}")
     try:
         locator, version, preferred = terminology_lines(document)
     except ValueError as exc:
         fail(f"{artifact_path}: {exc}")
         return
     if locator is None:
-        fail(f"正本が用語正本を参照していません（`用語正本: なし`）: {artifact_path}")
+        fail(f"基準資料が用語定義を参照していません（`用語定義: なし`）: {artifact_path}")
         return
     if Path(locator).resolve() != terminology_path.resolve():
-        fail(f"用語正本locatorが不一致です: {artifact_path}: {locator}")
+        fail(f"用語定義locatorが不一致です: {artifact_path}: {locator}")
     if version != terminology_version:
-        fail(f"用語正本versionが不一致です: {artifact_path}: {version} != {terminology_version}")
+        fail(f"用語定義versionが不一致です: {artifact_path}: {version} != {terminology_version}")
     missing = sorted(set(preferred) - set(terms))
     if missing:
-        fail(f"用語正本にない推奨用語名があります: {artifact_path}: {missing}")
+        fail(f"用語定義にない推奨用語名があります: {artifact_path}: {missing}")
     if "コマンドとクエリ" not in document.sections:
         return
     for table in tables(document.lines("コマンドとクエリ")):
@@ -186,9 +186,9 @@ def validate_reference(
             if kind not in ("コマンド", "クエリ"):
                 continue
             if name not in terms:
-                fail(f"用語正本にない操作名があります: {artifact_path}: {name}")
+                fail(f"用語定義にない操作名があります: {artifact_path}: {name}")
             if terms[name] != kind:
-                fail(f"操作名の概念種別が用語正本と一致しません: {artifact_path}: {name} は用語正本では {terms[name]}、正本では {kind}")
+                fail(f"操作名の概念種別が用語定義と一致しません: {artifact_path}: {name} は用語定義では {terms[name]}、基準資料では {kind}")
 
 
 def main() -> int:

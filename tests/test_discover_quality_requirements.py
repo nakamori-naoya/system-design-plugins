@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """discover-quality-requirements の検査script（quality.py）の正例・反例・境界例。
 
-正本: write-docの quality-requirements template が定める記法（scriptのdocstringに述語を列挙）。
-入力: 標準入力のMarkdown本文と、--upstream の要求発見・利用負荷モデル正本（fixture）。
+基準資料: write-docの quality-requirements template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文と、--upstream の要求発見・利用負荷モデル資料（fixture）。
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class QualityContractTest(CanonCase):
 
     def test_upstream_required(self) -> None:
         self.arguments = []
-        self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")
+        self.assert_fail(self.body(), "--upstream で上流資料が渡されていません")
 
     def test_threshold_notation(self) -> None:
         self.assert_fail(self.mutate("| >= 99.9 % |", "| 99.9% |"), "QR-001 の閾値は `<演算子> <数値> <単位>`")
@@ -90,7 +90,7 @@ class QualityContractTest(CanonCase):
         body = self.body()
         body = body.replace("| QR-003 | 処理量 | 確認経路の入口 | 受理できる確認要求数 | 未決 | 確定日の集中10分間 | 全確認要求 | 集中倍率が決まってから負荷試験で確かめる | open_question |\n", "")
         body = body.replace("| 処理量 | 未決 | 最大負荷は `WL-OQ-001` の集中倍率が決まるまで閾値を置かない | QR-003 |", "| 処理量 | 非該当 | 確認経路の処理量は可用性の成功率で測る | なし |")
-        body = body.replace("| 耐久性 | 未決 | 結果の保持年限は `REQ-OQ-002` が決まるまで閾値を置かない | なし |", "| 耐久性 | 非該当 | 結果の正本は審査システムが持つ | なし |")
+        body = body.replace("| 耐久性 | 未決 | 結果の保持年限は `REQ-OQ-002` が決まるまで閾値を置かない | なし |", "| 耐久性 | 非該当 | 結果の一次データは審査システムが持つ | なし |")
         body = body.replace("| 復旧性 | 未決 | 復旧目標は `QR-OQ-001` で事業責任者が判断する | なし |", "| 復旧性 | 非該当 | 復旧は審査システムの手順に従う | なし |")
         body = body.replace("| 運用性 | 未決 | 少人数運用で扱える障害対応の範囲は `QR-OQ-002` で決める | なし |", "| 運用性 | 非該当 | 運用は組織の共通手順に従う | なし |")
         body = body.replace("| 費用 | 未決 | 費用上限は `WL-OQ-001` が決まるまで置かない | なし |", "| 費用 | 非該当 | 費用上限は制約として扱う | なし |")

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""クラウドアーキテクチャ正本（cloud-architecture型のMarkdown）の構造契約を検査する。
+"""クラウドアーキテクチャ資料（cloud-architecture型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/architecture.py check --provider <aws|gcp> [--upstream <上流正本の絶対path> ...] < <正本の本文（Markdown）>
+  python3 scripts/architecture.py check --provider <aws|gcp> [--upstream <上流資料の絶対path> ...] < <クラウドアーキテクチャ資料の本文（Markdown）>
 
-入力は標準入力の本文、利用者が公開入力として明示した `--provider`、`--upstream` で渡した上流正本（要求発見・利用負荷
+入力は標準入力の本文、利用者が公開入力として明示した `--provider`、`--upstream` で渡した上流資料（要求発見・利用負荷
 モデル・品質要求）のpathだけである。一時fileは作らず、保存はwrite-docが行う。通ったときに言えるのは次だけであり、
 選定の妥当性やトレードオフの適否は言わない。
 
@@ -263,7 +263,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
     parser.add_argument("--provider", required=True, help="利用者が明示したクラウドプロバイダー（aws または gcp）")
-    parser.add_argument("--upstream", action="append", default=[], help="上流正本（要求発見・利用負荷・品質要求）の絶対path。複数可")
+    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要求発見・利用負荷・品質要求）の絶対path。複数可")
     args = parser.parse_args()
     try:
         result = check(read_stdin(), args.provider, args.upstream)

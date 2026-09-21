@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""要求発見正本（requirements-discovery型のMarkdown）の構造契約を検査する。
+"""要求発見資料（requirements-discovery型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/requirements.py check < <正本の本文（Markdown）>
+  python3 scripts/requirements.py check < <要求発見資料の本文（Markdown）>
 
-入力は標準入力の本文だけである（要求発見は上流正本を持たない）。一時fileは作らず、保存はwrite-docが行う。
+入力は標準入力の本文だけである（要求発見は上流資料を持たない）。一時fileは作らず、保存はwrite-docが行う。
 通ったときに言えるのは次だけであり、要求の正しさや十分性は言わない。
 
   - H2見出しがtemplateの名前と順序に一致し、冒頭に本文段落があり、どの節も空でない
@@ -14,7 +14,7 @@
   - `## 固定制約` の CON- は fact / agreed_decision の SRC だけを根拠にする（仮説を制約へ昇格しない）
   - `## スコープ` は 提供価値 / 実装必須 / 設計説明のみ / 対象外 を各1行持つ
   - `## コマンドとクエリ` の 種別 / イベント種別 / 対象 が語彙に収まり、コマンドの成功イベントはコマンドイベント、
-    対になる操作は同じ表の操作名か「なし」で相互に参照する（操作名が用語正本にあるかは ../../scripts/terminology.py が検査する）
+    対になる操作は同じ表の操作名か「なし」で相互に参照する（操作名が用語定義にあるかは ../../scripts/terminology.py が検査する）
   - `## 後続設計で決める論点` の ID は REQ-HYP- / REQ-OQ-、根拠状態は hypothesis / open_question、検証計画が空でない
   - `## 観測可能な完了` に全 REQ / DRV が現れる
   - 本文中の SRC / REQ / DRV / DEC / CON / REQ-HYP / REQ-OQ の参照がすべて定義済みである

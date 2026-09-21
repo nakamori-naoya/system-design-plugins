@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """discover-workload-model の検査script（workload.py）の正例・反例・境界例。
 
-正本: write-docの workload-model template が定める記法（scriptのdocstringに述語を列挙）。
-入力: 標準入力のMarkdown本文と、--upstream の要求発見正本（fixture）。
+基準資料: write-docの workload-model template が定める記法（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文と、--upstream の要求発見資料（fixture）。
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ class WorkloadContractTest(CanonCase):
 
     def test_upstream_is_required_for_upstream_references(self) -> None:
         self.arguments = []
-        self.assert_fail(self.body(), "--upstream で上流正本が渡されていません")
+        self.assert_fail(self.body(), "--upstream で上流資料が渡されていません")
         self.assert_fail(self.body(), "絶対path", "--upstream", "relative.md")
         self.assert_fail(self.body(), "regular file", "--upstream", "/nonexistent/requirements.md")
 
@@ -103,7 +103,7 @@ class WorkloadContractTest(CanonCase):
 
     def test_status_ready_without_open_questions(self) -> None:
         body = self.mutate("| WL-OQ-001 | open_question | 確定日の集中倍率は平常の何倍か | 直近2四半期の確定日の確認記録を取得する | WL-001、DIN-002 |\n", "")
-        body = body.replace("| REQ-OQ-001 | open_question | 確認経路は上流で未決のため継続する | 事業責任者の決定を要求発見正本へ戻す | WL-001 |\n", "")
+        body = body.replace("| REQ-OQ-001 | open_question | 確認経路は上流で未決のため継続する | 事業責任者の決定を要求発見資料へ戻す | WL-001 |\n", "")
         body = body.replace("確定日の集中倍率（`WL-OQ-001`）と確認経路（`REQ-OQ-001`）が決まるまで、", "")
         payload = self.assert_pass(body)
         self.assertEqual(payload["status"], "ready")

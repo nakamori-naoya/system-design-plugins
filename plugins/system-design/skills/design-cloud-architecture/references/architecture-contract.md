@@ -1,8 +1,8 @@
 # クラウドアーキテクチャ契約
 
-この参照資料は配置方式、選定と比較、ADR、構成図、追跡可能性、障害の判断境界と、正本（cloud-architecture型のMarkdown）に対する機械検査の宣言を定める。上流要求や論理データモデル、アプリケーション内部、IaCは定めない。正本の記法（見出し・表の列・ID）はwrite-docの`cloud-architecture`型のtemplateが定める。
+この参照資料は配置方式、選定と比較、ADR、構成図、追跡可能性、障害の判断境界と、基準資料（cloud-architecture型のMarkdown）に対する機械検査の宣言を定める。上流要求や論理データモデル、アプリケーション内部、IaCは定めない。基準資料の記法（見出し・表の列・ID）はwrite-docの`cloud-architecture`型のtemplateが定める。
 
-用語正本があるときは、本文の語を用語正本の推奨用語名で書き、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語正本の版が変わった場合は、参照項目を「仮説と未決」へ記録して再評価する。
+用語定義があるときは、本文の語を用語定義の推奨用語名で書き、要求・負荷資料の定義や暫定閾値を構成資料へ複製しない。用語定義の版が変わった場合は、参照項目を「仮説と未決」へ記録して再評価する。
 
 ## 入力プロバイダーの根拠
 
@@ -60,14 +60,14 @@
 
 図だけに情報を隠さず、採用構成の表と図のノードを一致させる。
 
-## 正本の記法と機械検査の宣言
+## 基準資料の記法と機械検査の宣言
 
-正本はwrite-docが保存するMarkdownだけであり、JSON正本は持たない。`scripts/architecture.py check --provider <aws|gcp> --upstream <要求発見正本> --upstream <利用負荷モデル正本> --upstream <品質要求正本>`は本文を標準入力で受け、次の宣言に従って構造契約だけを検査する。選定の妥当性、トレードオフの適否、障害経路の十分性はagentが読んで評価する。
+正式な資料はwrite-docが保存するMarkdownだけであり、JSON資料は持たない。`scripts/architecture.py check --provider <aws|gcp> --upstream <要求発見資料> --upstream <利用負荷モデル資料> --upstream <品質要求資料>`は本文を標準入力で受け、次の宣言に従って構造契約だけを検査する。選定の妥当性、トレードオフの適否、障害経路の十分性はagentが読んで評価する。
 
 ```text
-正本: write-docの cloud-architecture 型のtemplateが定める記法。公開入力 provider。上流正本（--upstream）が定義する REQ- / DRV- / WL- / DIN- / QR- / QCON- と上流の HYP / OQ。この文書の判断境界。
-入力: 標準入力の本文（UTF-8 Markdown）、--provider（aws | gcp）、--upstream の上流正本の絶対path（複数可）。
-正規化: HTMLコメントを除き、コードブロック外の `#` 見出しでH2節へ切る。表は見出し行・区切り行・本文行に分け、セルの `*` と backtick を除く。mermaid ブロックは ``` で切り出す。上流正本からは表の1列目と `### <ID>:` 小見出しのIDを定義済みIDとして拾う。
+基準資料: write-docの cloud-architecture 型のtemplateが定める記法。公開入力 provider。上流資料（--upstream）が定義する REQ- / DRV- / WL- / DIN- / QR- / QCON- と上流の HYP / OQ。この文書の判断境界。
+入力: 標準入力の本文（UTF-8 Markdown）、--provider（aws | gcp）、--upstream の上流基準資料の絶対path（複数可）。
+正規化: HTMLコメントを除き、コードブロック外の `#` 見出しでH2節へ切る。表は見出し行・区切り行・本文行に分け、セルの `*` と backtick を除く。mermaid ブロックは ``` で切り出す。上流資料からは表の1列目と `### <ID>:` 小見出しのIDを定義済みIDとして拾う。
 合格述語:
   - --provider が aws / gcp のどれか
   - H2が template の名前と順序に一致し、H1と冒頭の本文段落があり、どの節も空でない
@@ -85,7 +85,7 @@
 正例: tests/fixtures/design-cloud-architecture/success.md（--provider aws、--upstream に3 fixture。status: unresolved）。未決を解き ADR を agreed_decision にした写し（status: ready）
 反例: --provider azure、--provider gcp と AWS の採用候補、hypothesis の CON- しか無い、プロバイダー行の根拠IDに CON- が無い、12項目に欠けや重複、open_question の行に採用候補、決める問いを引かない open_question の行、代替案 なし、mermaid に無い NODE-、subgraph/end 不対応、graph で始まる図、追跡に無い NODE-、起点が NODE- でない FAIL-、ADR の状態 accepted、上流に無い REQ-
 境界例: 節内の本文段落は表と共存できる。NODE_DB のような下線名は図の内部名であり NODE- ではない（採用構成の図ノードIDは NODE-）。上流の未決の継続行は上流IDをそのまま使う
-意味評価として残す範囲: 配置方式の判定、選定と代替案の比較の妥当性、ADR の文脈と帰結、障害経路の網羅と縮退の妥当性、図が判断に重要な境界と流れを示しているか、追跡の意味上の正しさ、用語正本の語の使い方
+意味評価として残す範囲: 配置方式の判定、選定と代替案の比較の妥当性、ADR の文脈と帰結、障害経路の網羅と縮退の妥当性、図が判断に重要な境界と流れを示しているか、追跡の意味上の正しさ、用語定義の語の使い方
 ```
 
-用語正本との整合はこの型の正本ではscriptで検査しない。用語正本があるときは、本文の語が用語正本の推奨用語名と一致するかをagentが読んで確かめる。
+用語定義との整合はこの型の基準資料ではscriptで検査しない。用語定義があるときは、本文の語が用語定義の推奨用語名と一致するかをagentが読んで確かめる。

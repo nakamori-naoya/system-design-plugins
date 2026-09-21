@@ -1,9 +1,9 @@
-# discover-requirements — 要求源から要求発見正本（requirements-discovery型のMarkdown）を1本作る。
+# discover-requirements — 要求源から要求発見資料（requirements-discovery型のMarkdown）を1本作る。
 # 工程順と入出力だけを持つ。判断規律はSKILL.mdとreferencesが持つ。対話の作法はgrillの公開契約が持つ。
 # 本文はagentがインメモリで保持し、検査scriptへは標準入力で渡す。JSONも一時fileも作らず、保存はwrite-docが行う。
 version: 2
 name: discover-requirements
-description: 要求源と依頼から、事実・合意・仮説・未決を混同しない要求発見正本（Markdown）を同じagentが宣言順に作る。
+description: 要求源と依頼から、事実・合意・仮説・未決を混同しない要求発見資料（Markdown）を同じagentが宣言順に作る。
 inputs: [request, references, document_destination]
 instructions:
   execution:
@@ -44,7 +44,7 @@ steps:
     provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として後続設計で決める論点へ書き、templateの記法で要求発見正本の本文をインメモリで組み立てる"
+    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question として後続設計で決める論点へ書き、templateの記法で要求発見資料の本文をインメモリで組み立てる"
     needs: [decisions, open_questions]
     provides: [requirements_document_text]
   - id: verify
