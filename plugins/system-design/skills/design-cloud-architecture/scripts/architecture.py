@@ -12,7 +12,7 @@
   - `## 代替案比較` が12選定項目を各1行持ち、状態が agreed_decision / hypothesis / open_question / not_applicable、
     open_question の行は採用候補が 未決、not_applicable の行は採用候補が 非該当、それ以外は代替案を1つ以上持ち根拠IDが到達する。
     プロバイダー行の採用候補が --provider（AWS / GCP）と一致し、根拠IDに上の CON- を含む
-  - `## 採用構成` の NODE- が一意で根拠IDが到達し、`## インフラ構成図` の mermaid ブロック（flowchart で始まり subgraph/end が対応）に全 NODE- が現れる
+  - `## 採用構成` の NODE- が一意で根拠IDが到達し、`## インフラ構成図` の mermaid ブロック（flowchart で始まり subgraph/end が対応）に全 NODE- が識別子の単位で現れる（NODE-API-GW があっても NODE-API は現れたことにならない）
   - `## ADR` の ADR- が一意で、状態が agreed_decision / hypothesis、根拠IDが到達する
   - `## 障害・縮退経路` の FAIL- が一意で、起点が NODE- へ到達する
   - `## 要求トレーサビリティ` に全 ADR- と全 NODE- が現れ、要求ID・負荷ID・品質要求IDが上流へ到達する
@@ -194,8 +194,8 @@ def check(body: str, provider: str, upstream: list[str]) -> dict:
     closed = sum(1 for line in source if line.strip() == "end")
     if opened != closed:
         fail(f"インフラ構成図の subgraph と end が対応していません: subgraph={opened}, end={closed}")
-    diagram_text = "\n".join(source)
-    missing = [strip_markup(row["図ノードID"]) for row in nodes if strip_markup(row["図ノードID"]) not in diagram_text]
+    diagram_ids = set(ids_in("\n".join(source)))
+    missing = [strip_markup(row["図ノードID"]) for row in nodes if strip_markup(row["図ノードID"]) not in diagram_ids]
     if missing:
         fail(f"インフラ構成図に現れない図ノードがあります: {missing}")
 
