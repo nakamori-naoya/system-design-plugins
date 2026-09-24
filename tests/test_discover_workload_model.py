@@ -26,7 +26,7 @@ class WorkloadContractTest(CanonCase):
         self.assertEqual(payload["open_questions"], ["WL-OQ-001"])
 
     def test_headings_are_free(self) -> None:
-        self.assert_pass(self.mutate("## 結論", "## 先に結論"))
+        self.assert_pass(self.mutate("## データ量と保持", "## どれだけのデータを、いつまで持つか"))
 
     def test_trace_section_is_required(self) -> None:
         self.assert_fail(self.mutate("## 追跡情報", "## 対応"), "追跡情報がありません")
