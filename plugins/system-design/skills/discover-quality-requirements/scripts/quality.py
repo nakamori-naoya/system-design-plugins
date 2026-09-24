@@ -68,7 +68,7 @@ def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -
 
     rows = single_table(doc, "追跡情報", ["ID", "守る性質", "観測・検証", "根拠と状態"])
     requirements: list[str] = []
-    measurable: list[str] = []
+    non_open: list[str] = []
     open_questions: list[str] = []
     for row in rows:
         identifier = strip_markup(row["ID"])
@@ -77,7 +77,7 @@ def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -
             requirements.append(identifier)
             state = one_state(row["根拠と状態"], QR_STATES, f"{identifier}.根拠と状態")
             if state != "open_question":
-                measurable.append(identifier)
+                non_open.append(identifier)
         elif LOCAL_HYP_OR_OQ.fullmatch(identifier) and "-OQ-" in identifier:
             registry.define(identifier, "追跡情報")
             one_state(row["根拠と状態"], ("open_question",), f"{identifier}.根拠と状態")
@@ -91,7 +91,7 @@ def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -
         "document_type": "quality-requirements",
         "status": "unresolved" if open_questions else "ready",
         "quality_requirements": requirements,
-        "measurable": measurable,
+        "non_open": non_open,
         "conflicts": [],
         "open_conflicts": [],
         "hypotheses": [],
