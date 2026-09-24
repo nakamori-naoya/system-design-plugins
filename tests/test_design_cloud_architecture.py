@@ -53,6 +53,7 @@ class ArchitectureContractTest(CanonCase):
 
     def test_nodes_appear_in_diagram_and_trace(self) -> None:
         self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("予約データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
+        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("NODE-DB-REPLICA<br/>予約データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
         self.assert_fail(self.mutate("    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n  end\n", "    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n"), "subgraph と end が対応していません")
         self.assert_fail(self.mutate("flowchart LR", "graph LR"), "flowchart で始め")
         self.assert_fail(self.mutate("| ADR-001 | NODE-QUEUE、NODE-NOTIFY |", "| ADR-001 | NODE-NOTIFY |"), "要求トレーサビリティに現れない ADR / 図ノードがあります: ['NODE-QUEUE']")
