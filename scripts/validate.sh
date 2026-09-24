@@ -28,6 +28,19 @@ while IFS= read -r test; do
   PYTHONPYCACHEPREFIX="$TMP_ROOT/pycache" python3 "$test" || status=1
 done < <(find "$ROOT/tests" -maxdepth 1 -type f -name 'test_*.py' | sort)
 
+# write-doc の見本（兄弟 checkout）を4入口の検査scriptに通し、template と検査の記法が一致することを確かめる。見本が無ければ失敗させる。
+examples="$ROOT/../write-doc-plugins/plugins/write-doc/skills/write-doc/assets/examples"
+skills="$ROOT/plugins/system-design/skills"
+if [ -d "$examples" ]; then
+  python3 "$skills/discover-requirements/scripts/requirements.py" check < "$examples/requirements-discovery.example.md" >/dev/null || status=1
+  python3 "$skills/discover-workload-model/scripts/workload.py" check --upstream "$examples/requirements-discovery.example.md" < "$examples/workload-model.example.md" >/dev/null || status=1
+  python3 "$skills/discover-quality-requirements/scripts/quality.py" check --upstream "$examples/requirements-discovery.example.md" --upstream "$examples/workload-model.example.md" < "$examples/quality-requirements.example.md" >/dev/null || status=1
+  python3 "$skills/design-cloud-architecture/scripts/architecture.py" check --provider aws --upstream "$examples/requirements-discovery.example.md" --upstream "$examples/workload-model.example.md" --upstream "$examples/quality-requirements.example.md" < "$examples/cloud-architecture.example.md" >/dev/null || status=1
+else
+  echo "[error] write-doc の見本が無い: $examples" >&2
+  status=1
+fi
+
 if [ "$status" -eq 0 ]; then
   echo 'Validation: passed'
 else

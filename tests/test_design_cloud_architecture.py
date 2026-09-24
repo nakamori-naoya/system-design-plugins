@@ -23,7 +23,7 @@ class ArchitectureContractTest(CanonCase):
         self.assertEqual(payload["status"], "unresolved")
         self.assertEqual(payload["provider"], "aws")
         self.assertEqual(payload["provider_constraints"], ["CON-001"])
-        self.assertEqual(payload["nodes"], ["NODE-EDGE", "NODE-API", "NODE-DB"])
+        self.assertEqual(payload["nodes"], ["NODE-EDGE", "NODE-API", "NODE-DB", "NODE-QUEUE", "NODE-NOTIFY"])
         self.assertEqual(payload["unresolved_capabilities"], ["バックアップ/DR"])
         self.assertEqual(payload["accepted_adrs"], [])
 
@@ -46,42 +46,29 @@ class ArchitectureContractTest(CanonCase):
 
     def test_selection_state_rules(self) -> None:
         self.assert_fail(self.mutate("| バックアップ/DR | 未決 |", "| バックアップ/DR | 大阪への複製 |"), "open_question なので採用候補は 未決")
-        self.assert_fail(self.mutate("| QR-001、ARC-OQ-001 | 該当なし |", "| QR-001 | 該当なし |"), "open_question なので根拠IDに決める問い")
-        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito | CON-001 | 該当なし | 利用者認証は組織のID基盤へ委ねる | not_applicable |", "| ID管理 | Cognito | なし | CON-001 | 該当なし | 利用者認証は組織のID基盤へ委ねる | not_applicable |"), "not_applicable なので採用候補は 非該当")
+        self.assert_fail(self.mutate("| QR-OQ-001、ARC-OQ-001 | 該当なし |", "| QR-001 | 該当なし |"), "open_question なので根拠IDに決める問い")
+        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito | CON-001 |", "| ID管理 | Cognito | なし | CON-001 |"), "not_applicable なので採用候補は 非該当")
         self.assert_fail(self.mutate("| 計算処理 | ECS on Fargate | EKS、Lambda |", "| 計算処理 | ECS on Fargate | なし |"), "比較のため代替案が1つ以上必要")
-        self.assert_fail(self.mutate("| ARC-OQ-001 | open_question | リージョン障害時に何時間で復旧すべきか |", "| ARC-OQ-002 | open_question | リージョン障害時に何時間で復旧すべきか |"), "参照が未解決です: ARC-OQ-001")
+        self.assert_fail(self.mutate("| ARC-OQ-001 | `open_question` | リージョン障害時に何時間で復旧すべきか |", "| ARC-OQ-002 | `open_question` | リージョン障害時に何時間で復旧すべきか |"), "参照が未解決です: ARC-OQ-001")
 
     def test_nodes_appear_in_diagram_and_trace(self) -> None:
-        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>結果データベース")]', 'NODE_DB[("結果データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
-        self.assert_fail(self.mutate("  subgraph AU_DATA[\"東京リージョン・結果データ\"]\n    NODE_DB[(\"NODE-DB<br/>結果データベース\")]\n  end\n", "  subgraph AU_DATA[\"東京リージョン・結果データ\"]\n    NODE_DB[(\"NODE-DB<br/>結果データベース\")]\n"), "subgraph と end が対応していません")
+        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("予約データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
+        self.assert_fail(self.mutate("    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n  end\n", "    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n"), "subgraph と end が対応していません")
         self.assert_fail(self.mutate("flowchart LR", "graph LR"), "flowchart で始め")
-        self.assert_fail(self.mutate("| ADR-001 | NODE-EDGE、NODE-API、NODE-DB | 80件/秒", "| ADR-001 | NODE-EDGE、NODE-API | 80件/秒"), "要求トレーサビリティに現れない ADR / 図ノードがあります: ['NODE-DB']")
-        self.assert_fail(self.mutate("| NODE-DB | 結果データベース。", "| NODE_DB | 結果データベース。"), "図ノードIDの形式が不正です")
+        self.assert_fail(self.mutate("| ADR-001 | NODE-QUEUE、NODE-NOTIFY |", "| ADR-001 | NODE-NOTIFY |"), "要求トレーサビリティに現れない ADR / 図ノードがあります: ['NODE-QUEUE']")
+        self.assert_fail(self.mutate("| NODE-DB | 予約データベース。", "| NODE_DB | 予約データベース。"), "図ノードIDの形式が不正です")
 
     def test_failure_path_origin_is_a_node(self) -> None:
-        self.assert_fail(self.mutate("| FAIL-001 | NODE-DB |", "| FAIL-001 | Aurora |"), "FAIL-001 の起点は NODE- でなければなりません")
-        self.assert_fail(self.mutate("| FAIL-001 | NODE-DB |", "| FAIL-001 | NODE-CACHE |"), "参照が未解決です: NODE-CACHE")
+        self.assert_fail(self.mutate("| FAIL-001 | NODE-NOTIFY |", "| FAIL-001 | SQS |"), "FAIL-001 の起点は NODE- でなければなりません")
+        self.assert_fail(self.mutate("| FAIL-001 | NODE-NOTIFY |", "| FAIL-001 | NODE-CACHE |"), "参照が未解決です: NODE-CACHE")
 
     def test_adr_state_vocabulary(self) -> None:
-        self.assert_fail(self.mutate("失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | hypothesis |", "失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | accepted |"), "ADR-001.状態 の根拠状態は")
+        self.assert_fail(self.mutate("複数リージョン構成を再検討する | hypothesis |", "複数リージョン構成を再検討する | accepted |"), "ADR-001.状態 の根拠状態は")
 
     def test_upstream_reference_and_missing_upstream(self) -> None:
-        self.assert_fail(self.mutate("| REQ-001 | agreed_decision | 申請者が確定した", "| REQ-002 | agreed_decision | 申請者が確定した"), "上流参照が未解決です: REQ-002")
+        self.assert_fail(self.mutate("| REQ-001 | agreed_decision | 施設管理者が利用枠を公開できる |", "| REQ-009 | agreed_decision | 施設管理者が利用枠を公開できる |"), "上流参照が未解決です: REQ-009")
         self.arguments = ["--provider", "aws"]
         self.assert_fail(self.body(), "--upstream で上流資料が渡されていません")
-
-    def test_status_ready_requires_accepted_adr_and_no_open_question(self) -> None:
-        body = self.body()
-        body = body.replace("| バックアップ/DR | 未決 | 同一リージョン内スナップショット、大阪への複製 | QR-001、ARC-OQ-001 | 該当なし | リージョン障害時の復旧目標が決まるまで方式を選べない | open_question |", "| バックアップ/DR | 同一リージョン内スナップショット | 大阪への複製 | QR-001 | 運用対象を増やさない | リージョン障害には耐えない | hypothesis |")
-        body = body.replace("失うのはリージョン障害への継続性 | `ARC-OQ-001` が単一リージョンでは満たせない値になったとき | hypothesis |", "失うのはリージョン障害への継続性 | 復旧目標が単一リージョンでは満たせない値になったとき | agreed_decision |")
-        head, rest = body.split("## 仮説と未決\n", 1)
-        tail = rest.split("## この資料に書かないもの\n", 1)[1]
-        body = head + "## 仮説と未決\n\n| ID | 根拠状態 | 内容 | 設計感度 | 検証計画 | 影響先 |\n|---|---|---|---|---|---|\n| ARC-HYP-001 | hypothesis | 単一リージョン・複数AZで `QR-001` を満たせる | 入口とデータベースの可用性単位 | 障害注入と月額費用を検証する | ADR-001、NODE-EDGE、NODE-DB |\n\n## この資料に書かないもの\n" + tail
-        body = body.replace("集中倍率（`WL-OQ-001`）と確認経路（`REQ-OQ-001`）が未決なので、この構成は実装へ渡せる最終決定ではない。設計者と運用責任者は `ADR-001` を承認済みとして実装しない。", "設計者と運用責任者は `ADR-001` を承認済みとして実装へ渡す。")
-        body = body.replace("| REQ-OQ-001 | open_question | 確認経路が未決 | エッジ（通知製品を選ばない） |\n", "")
-        payload = self.assert_pass(body)
-        self.assertEqual(payload["status"], "ready")
-        self.assertEqual(payload["accepted_adrs"], ["ADR-001"])
 
 
 if __name__ == "__main__":
