@@ -6,12 +6,11 @@
 正規化: 公開入口は manifest の skills から作る。SKILL.md は本文をそのまま読む。
 合格述語: marketplace と二つの runtime manifest が一致し、skills が公開入口4件と一致する。各入口の SKILL.md の frontmatter name が
   directory名と一致し、references の全fileへ直接のリンクがある。SKILL.md は兄弟の入口の directory を含む path
-  （`skills/<兄弟>/`、`../<兄弟>/`、`<兄弟>/references/`、`<兄弟>/scripts/`）を書かない。backtick で囲んだ名前が
-  公開入口と同じ動詞（`discover-`、`design-`）で始まるなら、その名前は manifest の公開入口に実在する。
+  （`skills/<兄弟>/`、`../<兄弟>/`、`<兄弟>/references/`、`<兄弟>/scripts/`）を書かない。
 失敗時の診断: `FAIL: <理由>` を1行。終了code 1。
 正例: この repository そのもの。frontmatter の YAML comment と quoted scalar の name。
-反例: self-test の、公開入口の欠落、name の不一致、本文だけの name、name の欠落、兄弟の path への参照、実在しない入口名。
-境界例: 兄弟の入口の名前を backtick で挙げるだけの境界の宣言（「`design-cloud-architecture` が決める」）は拒まない。
+反例: self-test の、公開入口の欠落、name の不一致、本文だけの name、name の欠落、兄弟の path への参照。
+境界例: 兄弟の入口や外部 package の公開入口の名前を backtick で挙げるだけの境界の宣言（「`design-cloud-architecture` が決める」）は拒まない。
 意味評価として残す範囲: 名前を挙げた文が兄弟への依存を作っていないか（「先に兄弟を実行してから」など）、見出しの形や個数、文章の良し悪し。
 """
 from __future__ import annotations
@@ -31,7 +30,6 @@ IDS = (
     "discover-quality-requirements",
     "design-cloud-architecture",
 )
-ENTRY_VERBS = tuple(sorted({identifier.split("-")[0] + "-" for identifier in IDS}))
 LINK = re.compile(r"\[[^\]]+\]\((references/[^)#]+\.md)(?:#[^)]*)?\)")
 
 
@@ -140,9 +138,6 @@ def validate_entry(package: Path, identifier: str) -> None:
         name = re.escape(sibling)
         if re.search(rf"(?:skills/|\.\./){name}/|(?<![A-Za-z0-9_-]){name}/(?:references|scripts)/", text):
             fail(f"{identifier}のSKILL.mdが兄弟の入口のpathを書いている: {sibling}")
-    for quoted in re.findall(r"`([a-z][a-z0-9-]*)`", text):
-        if quoted.startswith(ENTRY_VERBS) and quoted not in IDS:
-            fail(f"{identifier}のSKILL.mdがmanifestに無い入口名を書いている: {quoted}")
     if any(root.glob(".*-plugin/plugin.json")):
         fail(f"{identifier}直接公開skillに入口別runtime manifestは不要")
 
@@ -222,20 +217,15 @@ def self_test(repository: Path) -> None:
         path = root / "plugins/system-design/skills/discover-requirements/SKILL.md"
         path.write_text(path.read_text(encoding="utf-8") + "\n詳しくは ../design-cloud-architecture/references/ を読む。\n", encoding="utf-8")
 
-    def unknown_entry(root: Path) -> None:
-        path = root / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8") + "\n構成は `design-architecture` が決める。\n", encoding="utf-8")
-
     with tempfile.TemporaryDirectory(prefix="system-design-sibling-") as value:
         candidate = Path(value) / "repository"
         shutil.copytree(repository, candidate, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         path = candidate / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8") + "\n構成は `design-cloud-architecture` が決める。\n", encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8") + "\n構成は `design-cloud-architecture` が決め、資料は `write-doc` が書く。\n", encoding="utf-8")
         validate_repository(candidate)
-        print("Positive: passed (兄弟の入口名を挙げる境界の宣言)")
+        print("Positive: passed (兄弟と外部の入口名を挙げる境界の宣言)")
 
     expect_rejected(repository, "兄弟の入口のpath", "兄弟の入口のpath", sibling_path)
-    expect_rejected(repository, "manifestに無い入口名", "manifestに無い入口名", unknown_entry)
     expect_rejected(repository, "公開skill欠落", "regular fileではない", remove_entry)
     expect_rejected(repository, "公開skill identity不一致", "nameが不一致", rename_entry)
     expect_rejected(repository, "本文だけの偽name", "frontmatter name", body_only_name)
