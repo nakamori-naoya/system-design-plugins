@@ -15,3 +15,7 @@
 - fixtureは各入口のMarkdown正例（`tests/fixtures/<入口>/success.md`）を持ち、testが文字列置換で反例・境界例を作って検査scriptへ標準入力で渡す。fixtureの存在を実モデル評価の成功として扱わない。案件固有の値（特定サービスの用語、閾値、採用技術）を既定値や例の正解にしない。2026-09-16以前のJSON fixtureは`tests/fixtures/legacy-json/`に記録として保全し、現行testからは参照しない。
 - install cache、隣接repository、外部公開、pushは変更しない。このsource treeだけを編集対象とする。
 - 変更後は`bash scripts/validate.sh`を実行する。未実装の公開skillがある間は失敗が正しく、検査を緩めて成功させない。
+
+## 検査スクリプトは、意味が一意に決まることだけを判定する
+
+このrepositoryの検査スクリプト（validate、lint、verify、checkなど、名前を問わない）が判定してよいのは、ファイルや見出しの有無、識別子や版の一致、宣言と配置の対応、禁止された書き方の有無のように、入力と基準資料から意味が決定論的に一意に決まることだけである。読んで解釈しないと決まらないことや、件数や語の出現のような品質の代わりの指標は判定せず、エージェントが読んで評価する（意味評価）。判定が一意に決まることを宣言できない検査は作らず、詳しい条件は `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.agents/rules/deterministic-validation.md` に従う。
