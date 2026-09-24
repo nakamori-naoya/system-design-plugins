@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """package共有の terminology.py（用語定義と、それを参照するMarkdown資料の整合）の正例・反例・境界例。
 
-基準資料: 用語定義fixture（tests/fixtures/terminology/success.md）と、要求発見fixtureの `## 用語` / `## コマンドとクエリ`。
+基準資料: 用語定義fixture（tests/fixtures/terminology/success.md）と、それを参照する資料のfixture（tests/fixtures/terminology/artifact.md）の `## 用語` / `## コマンドとクエリ`。
 入力: --terminology の用語定義と --artifact の基準資料Markdown。fixture fileは書き換えず、変種は一時directoryへ置く。
 """
 
@@ -12,7 +12,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from canon_case import REQUIREMENTS, ROOT, TERMINOLOGY
+from canon_case import FIXTURES, ROOT, TERMINOLOGY
+
+ARTIFACT = FIXTURES / "terminology/artifact.md"
 
 SCRIPT = ROOT / "plugins/system-design/scripts/terminology.py"
 
@@ -25,7 +27,7 @@ class TerminologyContractTest(unittest.TestCase):
         return subprocess.run(arguments, text=True, capture_output=True, check=False)
 
     def artifact_with(self, root: Path, glossary: Path, *, replace: tuple[str, str] | None = None) -> Path:
-        text = REQUIREMENTS.read_text(encoding="utf-8").replace("<FIXTURES>/terminology/success.md", str(glossary))
+        text = ARTIFACT.read_text(encoding="utf-8").replace("<FIXTURES>/terminology/success.md", str(glossary))
         if replace is not None:
             self.assertIn(replace[0], text)
             text = text.replace(*replace)
