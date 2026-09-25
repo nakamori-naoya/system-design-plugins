@@ -51,7 +51,7 @@ LOCAL_FAMILIES = {"QR", "QCON", "QR-HYP", "QR-OQ"}
 UPSTREAM_FAMILIES = {"REQ", "DRV", "CON", "REQ-HYP", "REQ-OQ", "WL", "DIN", "WL-HYP", "WL-OQ"}
 
 
-def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -> dict:
+def check_document(doc: Document, registry: Registry, upstream: list[str]) -> dict:
     doc.check_opening()
     rows = trace_table(doc, ["ID", "守る性質", "観測・検証", "根拠と状態"])
     requirements: list[str] = []
@@ -92,7 +92,7 @@ def check(body: str, upstream: list[str]) -> dict:
     registry = Registry(LOCAL_FAMILIES, UPSTREAM_FAMILIES)
     for path_text in upstream:
         registry.add_upstream(read_upstream(path_text), path_text)
-    return check_human_format(doc, registry, upstream)
+    return check_document(doc, registry, upstream)
 
 
 def main() -> int:
