@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""利用負荷モデル資料（workload-model型のMarkdown）の構造契約を検査する。
+"""利用負荷の資料（workload-model型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/workload.py check [--upstream <要求発見資料の絶対path> ...] < <利用負荷モデル資料の本文（Markdown）>
+  python3 scripts/workload.py check [--upstream <要件の資料の絶対path> ...] < <利用負荷の資料の本文（Markdown）>
 
-基準資料: write-doc の公開契約「検査が読む目印」の workload-model。見出しの文言は読まない。後続資料が
+読む目印: write-doc の workload-model 型の template にある「検査が読む目印」。見出しの文言は読まない。後続資料が
   IDで参照する設計入力と未決は、見出し行が「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の追跡の表に置く（どの見出しの下でもよい）。
-  上流（要求発見資料）が定義するID。
+  上流（要件の資料）が定義するID。
 入力: 標準入力の本文と、--upstream の上流資料の絶対path（複数可）。一時fileは作らず、保存はwrite-docが行う。
 正規化: HTMLコメントを除き、コードブロック外のH2見出しで節へ切る（見出しの文言は比べない）。表のセルの `*` と backtick を除く。上流からは表の1列目のIDを拾う。
 合格述語:
-  - H1と、最初のH2より前の本文段落（表・引用・箇条書きで始めない）があり、H2が1つ以上あり、どのH2節も空でない
+  - H1と、最初のH2より前の本文があり、H2が1つ以上あり、どのH2節も空でない
   - 見出し行が「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の表が資料に1つあり、IDが DIN- / WL- / <接頭辞>-OQ- で一意
   - 上流の <接頭辞>-OQ- と、影響する要求・判断が引く REQ- / DRV- / CON- 等の上流IDが、上流資料で定義済みである
 失敗時の診断: 標準エラーに `FAIL: <理由>` を1件。終了code 2。
-正例: tests/fixtures/discover-workload-model/success.md（write-doc の見本と同じ本文。--upstream に要求発見のfixture）。
+正例: tests/fixtures/workload-model.md（write-doc の見本と同じ本文。--upstream に要件のfixture）。
 反例: 追跡の表が無いか2つある、IDの形式が違う、上流に無いIDを引く、--upstream を渡さずに上流IDを引く。
 境界例: 見出しの名前と順序は問わず、追跡の表を置く見出しを改名しても通る。未決が無ければ status: ready。
 意味評価として残す範囲: 数値と根拠の妥当性、採用する仮定の適否、本文の計算が追跡の表の値と合っているか。
@@ -96,7 +96,7 @@ def check(body: str, upstream: list[str]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
-    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要求発見）の絶対path。複数可")
+    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要件）の絶対path。複数可")
     args = parser.parse_args()
     try:
         result = check(read_stdin(), args.upstream)

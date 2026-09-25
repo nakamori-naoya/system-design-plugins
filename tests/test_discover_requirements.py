@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """discover-requirements の検査script（requirements.py）の正例・反例・境界例。
 
-基準資料: write-docの requirements-discovery 型の template と見本（scriptのdocstringに宣言）。
+読む目印: write-doc の requirements-discovery 型の template にある「検査が読む目印」（述語は script の docstring）。
 入力: 標準入力のMarkdown本文だけ（上流資料を持たない）。正例は write-doc の見本と同じ本文の fixture。
 """
 
@@ -28,9 +28,6 @@ class RequirementsContractTest(CanonCase):
 
     def test_empty_stdin_is_rejected(self) -> None:
         self.assert_fail("", "標準入力が空")
-
-    def test_intro_must_be_a_paragraph(self) -> None:
-        self.assert_fail(self.mutate("RoomFlowでは、予約者が", "| 表 |\n\nRoomFlowでは、予約者が"), "冒頭は本文段落で始める")
 
     def test_headings_are_free(self) -> None:
         self.assert_pass(self.mutate("## 利用者と権限の範囲", "## 誰が何をできるか"))

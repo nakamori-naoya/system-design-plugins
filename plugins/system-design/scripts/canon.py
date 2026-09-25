@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""system-design 4入口が共有する、Markdown資料の構文解析と共通述語。
+"""system-design の検査scriptが共有する、Markdown資料の構文解析と共通述語。
 
-このmoduleは意味を評価しない。読むのは、write-docの公開契約「検査が読む目印」が宣言する目印（H1と冒頭の本文段落、
-決まった見出し行を持つ追跡の表、`<接頭辞>-<数字>` のID、根拠状態の機械値、Mermaidブロック）だけで、
-見出しの文言は読まない。各入口のscriptはこのmoduleを使って、自分の型に固有の述語を重ねる。
+このmoduleは意味を評価しない。読むのは、write-doc の各型の template の「検査が読む目印」にある目印（H1と冒頭の本文、
+決まった見出し行を持つ追跡の表、`<接頭辞>-<数字>` のID、根拠状態の値、Mermaidブロック）だけで、
+見出しの文言は読まない。型ごとのscriptはこのmoduleを使って、自分の型に固有の述語を重ねる。
 
-  - 入力は標準入力の本文（UTF-8 Markdown）と、引数で渡された上流基準資料のpathだけ。一時fileは作らない。
+  - 入力は標準入力の本文（UTF-8 Markdown）と、引数で渡された上流資料のpathだけ。一時fileは作らない。
   - 失敗は ContractError で診断を返し、呼び手が `FAIL: <理由>` を標準エラーへ書いて終了code 2にする。
 """
 
@@ -18,7 +18,6 @@ from pathlib import Path
 HEADING = re.compile(r"^(#{1,6})[ ]+(.+?)[ ]*$")
 ID_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])([A-Z]{2,}(?:-[A-Z]{2,})*-\d{3,})(?![A-Za-z0-9_-])")
 NODE_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])(NODE-[A-Z0-9]+(?:-[A-Z0-9]+)*)(?![A-Za-z0-9_-])")
-NUMBER_WITH_UNIT = re.compile(r"^\d[\d,\.]*\s*[^\d\s].*$")
 EVIDENCE_STATES = ("fact", "agreed_decision", "hypothesis", "open_question")
 
 
@@ -32,10 +31,10 @@ def fail(message: str) -> None:
 
 def read_stdin() -> str:
     if sys.stdin.isatty():
-        fail("基準資料の本文を標準入力で渡す")
+        fail("資料の本文を標準入力で渡す")
     body = sys.stdin.read()
     if not body.strip():
-        fail("標準入力が空。基準資料の本文を標準入力で渡す")
+        fail("標準入力が空。資料の本文を標準入力で渡す")
     return body
 
 
@@ -104,14 +103,12 @@ class Document:
         return lines
 
     def check_opening(self) -> None:
-        """H1、最初のH2より前の本文段落、1つ以上のH2があり、どのH2節も空でない。見出しの文言は見ない。"""
+        """H1、最初のH2より前の本文、1つ以上のH2があり、どのH2節も空でない。見出しの文言は見ない。"""
         if self.title is None:
             fail("文書題名（H1）がありません")
         intro_text = [line for line in self.intro if line.strip()]
         if not intro_text:
-            fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
-        if intro_text[0].lstrip().startswith(("|", ">", "- ", "* ", "```")):
-            fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
+            fail("冒頭の本文がありません（最初のH2より前に本文を書く）")
         if not self.blocks:
             fail("本文を判断単位へ分けるH2見出しがありません")
         for title, block in zip(self.order, self.blocks):
@@ -214,7 +211,7 @@ def one_state(cell: str, allowed: tuple[str, ...], label: str) -> str:
 
 
 class Registry:
-    """この基準資料で定義したIDと、上流資料で定義したID。参照到達の正解をここから導く。"""
+    """検査する資料で定義したIDと、上流資料で定義したID。参照到達の正解をここから導く。"""
 
     def __init__(self, local_families: set[str], upstream_families: set[str]) -> None:
         self.local_families = local_families
@@ -262,55 +259,6 @@ class Registry:
 
     def local_ids(self, group: str) -> list[str]:
         return [identifier for identifier in self.local if family(identifier) == group]
-
-
-def prose_lines(doc: Document) -> list[str]:
-    """冒頭と全H2節の行のうち、コードブロックの外の行。"""
-    lines: list[str] = []
-    in_code = False
-    for line in doc.all_lines():
-        if line.startswith("```"):
-            in_code = not in_code
-            continue
-        if not in_code:
-            lines.append(line)
-    return lines
-
-
-def terminology_lines(doc: Document) -> tuple[str | None, int | None, list[str]]:
-    """資料のどこにあってもよい `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` の行と、
-    `推奨用語名: a、b` の行を読む。見出しの名前は読まない。`用語定義:` の行が無ければ (None, None, []) ではなく失敗にする。"""
-    lines = [strip_markup(line) for line in prose_lines(doc) if line.strip()]
-    heads = [line for line in lines if re.match(r"^用語定義[:：]", line)]
-    if not heads:
-        fail("`用語定義: <絶対path> 版: <整数>` または `用語定義: なし` の行がありません")
-    if len(heads) != 1:
-        fail(f"`用語定義:` の行は資料に1つだけ置きます（見つかった行: {len(heads)}）")
-    head = re.match(r"^用語定義[:：]\s*(.+?)\s*(?:版[:：]\s*(\d+))?$", heads[0])
-    if head is None:
-        fail("`用語定義:` の行は `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` でなければなりません")
-    locator = head.group(1).strip()
-    if locator == "なし":
-        if head.group(2) is not None:
-            fail("`用語定義: なし` に版を書けません")
-        return None, None, []
-    if head.group(2) is None:
-        fail("用語定義を参照するときは `版: <整数>` が必要です")
-    version = int(head.group(2))
-    if version < 1:
-        fail("用語定義の版は1以上の整数でなければなりません")
-    if not Path(locator).is_absolute():
-        fail(f"用語定義の所在は絶対pathでなければなりません: {locator}")
-    named = [line for line in lines if re.match(r"^推奨用語名[:：]", line)]
-    if len(named) != 1:
-        fail(f"用語定義を参照するときは `推奨用語名: <名>、<名>` の行を1つ置きます（見つかった行: {len(named)}）")
-    value = re.match(r"^推奨用語名[:：]\s*(.*)$", named[0]).group(1)
-    terms = [item.strip() for item in re.split(r"[、,]", value) if item.strip()]
-    if not terms:
-        fail("`推奨用語名:` の行に推奨用語名がありません")
-    if len(set(terms)) != len(terms):
-        fail("推奨用語名に重複があります")
-    return locator, version, terms
 
 
 def mermaid_blocks(lines: list[str]) -> list[list[str]]:

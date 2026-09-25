@@ -24,7 +24,7 @@ jobs:
           repository: ${{ github.repository_owner }}/harness-tools
           ref: main
           path: harness-tools
-      # write-doc の見本を4入口の検査scriptに通すため、検証済みの main を兄弟 checkout する。
+      # write-doc の見本を4つの型の検査scriptに通すため、検証済みの main を兄弟 checkout する。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository_owner }}/write-doc-plugins

@@ -1,57 +1,19 @@
 # システム設計
 
-要求、利用・負荷、品質要求を先に明らかにし、その根拠からクラウドアーキテクチャを設計するClaude Code／Codex両対応のプラグインリポジトリです。公開インストール対象は`system-design@system-design`という単一パッケージです。
+要件、利用負荷、品質要求を先に資料にし、その根拠からクラウドアーキテクチャを決める、Claude Code と Codex の両方で使える plugin です。公開するのは `system-design@system-design` の一つの package で、入口は二つあります。
 
-## 公開スキル
+`discover-requirements` は、要件（requirements-discovery）、利用負荷（workload-model）、品質要求（quality-requirements）のうち依頼された型の資料を一本、作るか深めます。作るか深めるかは同じ入口で扱い、grill で何を問うかで分けます。三つの型は一つの判断を一つの型だけが持つように分けてあり、値と偏りは利用負荷が、守る性質と頻度の制限は品質要求が持ち、要件は因果の要約とその ID の参照だけを持ちます。
 
-| スキル | 一責務と完了状態 |
-|---|---|
-| `discover-requirements` | 目的、責任範囲、制約に加え、サービス特性から失敗リスクと必要な成果を導く因果を、根拠と要求ID付きで記録する |
-| `discover-workload-model` | 調査結果を採用仮定へ変え、規模、到着率、偏り、保持を要件とインフラ構成の判断へ接続する設計入力モデルにする |
-| `discover-quality-requirements` | 業務影響を、対象、刺激、環境、期待応答、測定基準、測定方法を持つ品質シナリオにする |
-| `design-cloud-architecture` | 要求・負荷・品質・制約から、選定、比較、ADR、編集可能な図、追跡表、検証計画を備えたクラウド設計を作る |
+`design-cloud-architecture` は、利用者が指定したプロバイダー（`aws` か `gcp`）と三つの資料から、代替案と比べた選定、ADR、障害と縮退の経路、編集できる構成図を持つクラウドアーキテクチャの資料を作ります。プロバイダーは推測せず、指定が無ければ止まります。
 
-4つはpackage manifestから直接公開する独立した自己完結skillです。各skill直下の`playbook.yml` v2が意味ある工程順序を保持し、公開`SKILL.md`を読む同じ担当が`agent_work: invoking_agent`の工程を宣言順に実行します。同じ担当が入力と`references`の資料の読み込み、意味判断、成果を左右する問いの選定、公開playbook `grill`（`grill` marketplace）での解消、日本語Markdown資料の本文の組み立て、入口の`scripts/`にある検査scriptへの標準入力での受け渡し、公開playbook `write-doc`（`write-doc` marketplace）への`kind: text`での受け渡し、保存後の読み戻し、停止または完了の報告まで保持します。正式な資料はwrite-docが保存するMarkdown 1本だけで、JSON資料や作業用fileは作りません。外部依存は`grill`と`write-doc`の公開契約だけです。同等の既存資料が入力契約を満たせば、他skillの実行を必須としません。未決を確定前提として後続へ渡しません。
+どちらの入口も、資料を write-doc で保存し、保存した資料に検査を一回かけます。検査が読むのは write-doc の各型の template にある「検査が読む目印」（追跡の表、ID、根拠の状態の値、構成図のブロック）だけで、見出しの文言は読みません。資料の中身が妥当かは、エージェントが読んで評価します。語は bdd-discovery-and-formulation の業務知識の資料が持つユビキタス言語に従い、この plugin は独自の用語集を持ちません。
 
-複数成果物で共有する用語と暫定境界は、一つのMarkdown用語定義に定義し、要求発見資料の`用語定義:`と`推奨用語名:`の行から、用語定義の絶対path・版と日本語の推奨用語名を参照します。用語IDや用語定義IDを利用者へ要求せず、定義本文を各資料へ複製しません。用語定義は表にせず、`アクター`、`コマンド`、`クエリ`、`コマンドイベント`、`クエリイベント`、`時間イベント`、`システムイベント`、`値・指標`、`状態`、`データ`、`方針・制約`、`業務上の概念`、`負荷特性`、`設計上の概念`のどれかを各用語の`- 種別:`の行に書き、推奨用語名を`###`の見出しとして置きます。H2は読み手のための自由な見出しで、種別を表しません。状態変更の意図は`コマンド`、読み取り専用操作は`クエリ`、コマンド成功後の状態変更事実は`コマンドイベント`、状態を変えず読み取りが成立した事実は`クエリイベント`、時刻・期限への到達事実は`時間イベント`、内部処理の観測事実は`システムイベント`へ分けます。業務上の対象・関係・情報は`業務上の概念`、処理量や共有資源への負荷を増やす性質は`負荷特性`、測定値は`値・指標`へ分けます。要求発見資料の操作の表（見出し行が`| 操作 | 種別 |`で始まる表）はコマンドとクエリから各成功イベントを別々に追跡し、開始／解除など対になる操作を相互参照します。`plugins/system-design/scripts/terminology.py check --terminology <用語定義の絶対パス> --artifact <要求発見資料の絶対パス>`は、基準資料が同じ版・所在を参照すること、`推奨用語名:`とコマンド・クエリの操作名が用語定義の同じ種別にあること、推奨用語名の重複や種別の不整合がないことを検査します。見出しの文言は読みません。利用負荷・品質要求・クラウドアーキテクチャの基準資料は`用語定義:`の行を持たないので、用語の使い方はagentが読んで評価します。
-
-各skillは利用者が明示した資料と`references`を直接読み、答えで成果が変わる未決だけを推奨付きで`grill`へ渡します。問い方、上限、一覧への合意はgrillの公開契約が定め、このrepositoryは問いの選び方と結果の扱い（決定の反映、未決の推奨の仮置き、2回目を呼ぶ条件）だけを持ちます。残る論点は推奨を仮置きした`hypothesis` / `open_question`として各資料の追跡の表と本文へ反映し、成果物とともに提示して利用者が成果物を見てから確かめます。止まるのは対象を識別できない、責務外、保存先が確認できない、上流資料が無い、toolの失敗のときだけで、判断の揺れや資料の不足では仮説を明示して進みます。結果は`status`（`ready` / `unresolved`）、決定、未決、保存した資料の絶対pathを返します。検査成功は構造契約の確認に限り、内容の妥当性と保存後の一致は同じ担当が対象資料と保存後の成果を実読して根拠付きで報告します。
-
-### 基準資料の記法と検査
-
-4つの基準資料について検査が読む目印（決まった見出し行を持つ追跡の表、`REQ-` / `DRV-` / `DEC-` / `CON-` / `WL-` / `DIN-` / `QR-` / `QCON-` / `NODE-` / `ADR-` / `FAIL-`と`<資料接頭辞>-HYP-` / `-OQ-`のID、根拠状態の機械値、構成図の`flowchart`のブロック）は、write-docの公開契約「検査が読む目印」が定めます。検査は見出しの文言を読まないので、見出しには節の結論を入れられます。各入口の`scripts/`にある検査script（`requirements.py` / `workload.py` / `quality.py` / `architecture.py`）は本文を標準入力で、上流資料を`--upstream`で受け、追跡の表の有無、IDの一意性と参照到達、根拠状態の語彙、構成図に全ノードが現れることを述語として検査し、`status`とID一覧をJSONで返します。基準資料のpathから正解を導き、一時fileを作りません。更新は`update_target`で既存の基準資料を書き換え、手書きの版は持ちません（履歴はgitが担う）。
-
-## 責務境界
-
-- プロダクトの北極星やプロダクト戦略をこのリポジトリで立案しません。
-- 業務ルールやBDD、画面、API、論理DB、DDL、索引、IaCをクラウド都合で作りません。
-- BDDへ渡す場合は、公開されたBDD入口への参照資料として、確定事項と仮説を区別したまま利用者が明示します。
-- 外部パッケージには公開playbook（`grill`、`write-doc`）としてのみ依存し、内部実装やインストール用キャッシュは実行時依存にしません。
+この plugin は、プロダクトの北極星や戦略、業務ルールや BDD、画面、API、論理データモデル、DDL、IaC を作りません。外部の package には、grill と write-doc の公開入口としてだけ依存します。
 
 ## 配布構造
 
-- Codex マーケットプレイス: `.agents/plugins/marketplace.json`
-- Claude Code マーケットプレイス: `.claude-plugin/marketplace.json`
-- 配布パッケージ: `plugins/system-design`
-- 直接公開する一責務スキル: `plugins/system-design/skills`
-
-マーケットプレイスは実行時固有の根拠表現を使いますが、マーケットプレイス名、パッケージ名、版、配布先は検証スクリプトで同一性を保証します。
-
-## クラウドプロバイダーの指定
-
-`design-cloud-architecture`は、利用者が依頼で明示したプロバイダー（`aws`または`gcp`）を公開入力`provider`として受け取ります。設定ファイルや同梱既定値は持たず、未指定や`aws`／`gcp`以外は確認を求めて停止します。指定の根拠は合意済み制約（`CON-`）として基準資料の追跡の表へ記録します。採用した構成が入力providerのサービスで組まれていることは、語の照合では決まらないので検査scriptでは確かめず、agentが保存後の資料を読み戻して確かめます。
-
-以前の設定解決経路（`.harness-plugins/system-design.config.yml`、`prepare.sh`）と、2026-09-16以前のJSON資料（`<repo>/system-design/<kind>/<slug>.<kind>.json`）は撤去しました。JSON資料を読む・更新する経路は無く、既存のJSON資料は参照資産として残せますが現行入力にはなりません。同じ対象の基準資料はMarkdownとして新規に作ります。
-
-## 英語表記の監査方針
-
-- 現行機械契約として固定するもの: スキルID、CLI、ファイル名、JSON／YAMLのキー・列挙値、参照ID、単位、数式、プロトコル。
-- 英語が通例のため維持するもの: AWS、GCP、ADR、SLO、RPO、RTO、API、JSON、YAML、BDD、Mermaid、Terraform、95パーセンタイル表記の`p95`。初出で日本語の意味または機械値を併記します。
-- 日本語化するもの: 見出し、説明、判断理由、典型例、反例、境界例、図の表示名、テストデータの人間向け文章。
-- 判断保留: 現在はありません。将来、製品の正式名称を追加した場合は、正式名称を維持して役割を日本語で補います。
+Codex の marketplace は `.agents/plugins/marketplace.json`、Claude Code の marketplace は `.claude-plugin/marketplace.json`、配布する package は `plugins/system-design` です。
 
 ## 検証
 
-`scripts/validate.sh`は、兄弟checkout `../harness-tools/tools/validate-plugin-repository.py`（保守toolの唯一の参照元。無ければ検査を止め、fixtureで代用しません）によるroot契約（配置・manifest・隣接`playbook.yml`・禁止参照形）に続けて、マーケットプレイスとマニフェストの同一性、4個の直接公開skill、各referenceへの到達、隣接`playbook.yml` v2の宣言順序契約（`grill` → 検査script → `write-doc`の順、`references`入力）、4つの検査scriptと`terminology.py`のMarkdown fixtureに対する正例・反例・境界例を検査します。self-testは公開skill欠落、identity不一致、playbook欠落、未知needを意図的に作り、検証器が拒否することを確かめます。SKILL.mdの見出しの形や個数、文章の妥当性は検査せず、agentが読んで評価します。
-
-CIは`.github/workflows/validate.yml`で`harness-tools`を兄弟checkoutし、`harness-tools/ci/validate.sh`でlocalと同じcommandを実行します。公開スキルの実装が揃うまではリポジトリ検証が失敗する設計です。構造検査の成功、テストデータの静的検査、実モデルによる意味評価、実ツール端から端までの検証（E2E）は別の結果として報告します。
+`bash scripts/validate.sh` は、兄弟 checkout の `../harness-tools` による package の構造検査、各入口の SKILL.md から自分の reference へ届くことと兄弟の入口の path を書かないことの検査、検査 script の正例・反例・境界例の test、write-doc の見本（兄弟 checkout の `../write-doc-plugins`）が四つの検査を通ることを確かめます。harness-tools か write-doc の checkout が無ければ、fixture で代用せずに止まります。CI は `.github/workflows/validate.yml` から同じ command を実行します。

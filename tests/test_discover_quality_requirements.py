@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""discover-quality-requirements の検査script（quality.py）の正例・反例・境界例。
+"""品質要求の資料の検査script（quality.py）の正例・反例・境界例。
 
-基準資料: write-docの quality-requirements 型の template と見本（scriptのdocstringに宣言）。
+読む目印: write-doc の quality-requirements 型の template にある「検査が読む目印」（述語は script の docstring）。
 入力: 標準入力のMarkdown本文と、--upstream の要求発見・利用負荷資料（fixture）。正例は write-doc の見本と同じ本文の fixture。
 """
 
@@ -13,7 +13,7 @@ from canon_case import QUALITY, REQUIREMENTS, SKILLS, WORKLOAD, CanonCase
 
 
 class QualityContractTest(CanonCase):
-    script = SKILLS / "discover-quality-requirements/scripts/quality.py"
+    script = SKILLS / "discover-requirements/scripts/quality.py"
     fixture = QUALITY
     arguments = ["--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD)]
 

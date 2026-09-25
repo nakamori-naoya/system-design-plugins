@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""4入口の検査scriptを、Markdown fixtureを標準入力で渡して実行するtest基盤。
+"""型ごとの検査scriptを、Markdown fixtureを標準入力で渡して実行するtest基盤。
 
-各testは `tests/fixtures/<入口>/success.md`（正例）を読み、文字列の置換で反例・境界例を作って
+各testは `tests/fixtures/<型>.md`（正例）を読み、文字列の置換で反例・境界例を作って
 scriptへ渡す。fixture fileを書き換えず、一時fileも作らない（scriptは標準入力と上流pathだけを読む）。
 """
 
@@ -15,11 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "plugins/system-design/skills"
 FIXTURES = ROOT / "tests/fixtures"
-REQUIREMENTS = FIXTURES / "discover-requirements/success.md"
-WORKLOAD = FIXTURES / "discover-workload-model/success.md"
-QUALITY = FIXTURES / "discover-quality-requirements/success.md"
-ARCHITECTURE = FIXTURES / "design-cloud-architecture/success.md"
-TERMINOLOGY = FIXTURES / "terminology/success.md"
+REQUIREMENTS = FIXTURES / "requirements-discovery.md"
+WORKLOAD = FIXTURES / "workload-model.md"
+QUALITY = FIXTURES / "quality-requirements.md"
+ARCHITECTURE = FIXTURES / "cloud-architecture.md"
 
 
 class CanonCase(unittest.TestCase):

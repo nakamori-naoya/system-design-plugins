@@ -1,35 +1,25 @@
 #!/usr/bin/env python3
-"""system-design packageの公開入口と自己完結の構造契約を検査する。
+"""system-design の各公開入口が、自分の references へ届き、兄弟の入口の中身へ依存しないことを検査する。
 
-基準資料: plugin-package-contract の「自己完結」（兄弟の入口の中身へ依存しない）と、package の manifest の skills。
-入力: 引数の repository の絶対path。
-正規化: 公開入口は manifest の skills から作る。SKILL.md は本文をそのまま読む。
-合格述語: marketplace と二つの runtime manifest が一致し、skills が公開入口4件と一致する。各入口の SKILL.md の frontmatter name が
-  directory名と一致し、references の全fileへ直接のリンクがある。SKILL.md は兄弟の入口の directory を含む path
-  （`skills/<兄弟>/`、`../<兄弟>/`、`<兄弟>/references/`、`<兄弟>/scripts/`）を書かない。
+manifest と配置の一致は harness-tools/tools/validate-plugin-repository.py が見るので、ここでは見ない。
+
+入力: 引数の repository の絶対path。公開入口は plugins/system-design/skills/ 直下の directory。
+合格述語: 各入口の SKILL.md が、自分の references/ にある全 .md へ `[..](references/<名前>.md)` の形で直接リンクする。
+  SKILL.md は兄弟の入口の directory を含む path（`skills/<兄弟>/`、`../<兄弟>/`、`<兄弟>/references/`、`<兄弟>/scripts/`）を書かない。
 失敗時の診断: `FAIL: <理由>` を1行。終了code 1。
-正例: この repository そのもの。frontmatter の YAML comment と quoted scalar の name。
-反例: self-test の、公開入口の欠落、name の不一致、本文だけの name、name の欠落、兄弟の path への参照。
-境界例: 兄弟の入口や外部 package の公開入口の名前を backtick で挙げるだけの境界の宣言（「`design-cloud-architecture` が決める」）は拒まない。
-意味評価として残す範囲: 名前を挙げた文が兄弟への依存を作っていないか（「先に兄弟を実行してから」など）、見出しの形や個数、文章の良し悪し。
+正例: この repository そのもの。兄弟や外部の入口の名前を backtick で挙げるだけの文（「`design-cloud-architecture` が決める」）。
+反例: self-test の、reference へのリンクの欠落と、兄弟の path への参照。
+意味評価として残す範囲: 名前を挙げた文が兄弟への依存を作っていないか、文章の良し悪し。
 """
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import shutil
-import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-
-IDS = (
-    "discover-requirements",
-    "discover-workload-model",
-    "discover-quality-requirements",
-    "design-cloud-architecture",
-)
 LINK = re.compile(r"\[[^\]]+\]\((references/[^)#]+\.md)(?:#[^)]*)?\)")
 
 
@@ -37,199 +27,44 @@ class ValidationError(ValueError):
     pass
 
 
-def fail(message: str) -> None:
-    raise ValidationError(message)
-
-
-def regular(path: Path, label: str) -> None:
-    if path.is_symlink() or not path.is_file():
-        fail(f"{label}がregular fileではない: {path}")
-
-
-def load_json(path: Path, label: str) -> dict:
-    regular(path, label)
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        fail(f"{label}をJSON objectとして読めない: {exc}")
-    if not isinstance(value, dict):
-        fail(f"{label}がJSON objectではない")
-    return value
-
-
-def load_yaml(path: Path, label: str) -> dict:
-    regular(path, label)
-    result = subprocess.run(
-        ["yq", "-o=json", "-I=0", ".", str(path)],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode:
-        fail(f"{label}をYAML objectとして読めない: {result.stderr.strip()}")
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        fail(f"{label}のYAML parser出力をJSONとして読めない: {exc}")
-    if not isinstance(value, dict):
-        fail(f"{label}がYAML objectではない")
-    return value
-
-
-def skill_name(path: Path) -> str:
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    if not lines or lines[0] != "---":
-        fail(f"SKILL.mdのYAML frontmatter開始が無い: {path}")
-    try:
-        end = lines.index("---", 1)
-    except ValueError:
-        fail(f"SKILL.mdのYAML frontmatter終端が無い: {path}")
-    result = subprocess.run(
-        ["yq", "-o=json", "-I=0", "."],
-        input="\n".join(lines[1:end]) + "\n",
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode:
-        fail(f"SKILL.mdのYAML frontmatterを解析できない: {path}: {result.stderr.strip()}")
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        fail(f"SKILL.mdのYAML parser出力が不正: {path}: {exc}")
-    name = value.get("name") if isinstance(value, dict) else None
-    if not isinstance(name, str) or not name:
-        fail(f"SKILL.mdのfrontmatter nameが文字列ではない: {path}")
-    return name
-
-
-def marketplace(repository: Path, runtime: str) -> tuple[str, str, str]:
-    path = repository / (".agents/plugins/marketplace.json" if runtime == "codex" else ".claude-plugin/marketplace.json")
-    value = load_json(path, f"{runtime} marketplace")
-    plugins = value.get("plugins")
-    if not isinstance(plugins, list) or len(plugins) != 1 or not isinstance(plugins[0], dict):
-        fail(f"{runtime} marketplaceはpackage一件でなければならない")
-    item = plugins[0]
-    source = item.get("source")
-    if runtime == "codex":
-        if not isinstance(source, dict) or source.get("source") != "local":
-            fail("Codex marketplace sourceがlocalではない")
-        source = source.get("path")
-    result = (item.get("name"), item.get("version"), source)
-    if not all(isinstance(part, str) and part for part in result):
-        fail(f"{runtime} marketplace identityが不正")
-    return result  # type: ignore[return-value]
-
-
-def validate_entry(package: Path, identifier: str) -> None:
-    root = package / "skills" / identifier
-    entry = root / "SKILL.md"
-    regular(entry, f"{identifier}公開SKILL.md")
-    text = entry.read_text(encoding="utf-8")
-    name = skill_name(entry)
-    if name != identifier:
-        fail(f"{identifier}公開skill nameが不一致")
-    links = LINK.findall(text)
-    references = sorted((root / "references").glob("*.md"))
-    if {root / link for link in links} != set(references):
-        fail(f"{identifier}内部SKILL.mdから全referenceへ直接到達できない")
-    for sibling in sorted(set(IDS) - {identifier}):
-        name = re.escape(sibling)
-        if re.search(rf"(?:skills/|\.\./){name}/|(?<![A-Za-z0-9_-]){name}/(?:references|scripts)/", text):
-            fail(f"{identifier}のSKILL.mdが兄弟の入口のpathを書いている: {sibling}")
-    if any(root.glob(".*-plugin/plugin.json")):
-        fail(f"{identifier}直接公開skillに入口別runtime manifestは不要")
-
-
 def validate_repository(repository: Path) -> None:
-    if not repository.is_absolute() or repository.is_symlink() or not repository.is_dir():
-        fail(f"repositoryは実在する絶対directoryでなければならない: {repository}")
-    expected = ("system-design", "3.0.0", "./plugins/system-design")
-    if marketplace(repository, "codex") != expected or marketplace(repository, "claude") != expected:
-        fail("marketplace identityがruntime間またはpackageと一致しない")
-    package = repository / "plugins/system-design"
-    manifests = [load_json(package / f".{runtime}-plugin/plugin.json", f"package {runtime} manifest") for runtime in ("codex", "claude")]
-    shared = [{key: item.get(key) for key in ("name", "version", "skills")} | {"harness": item.get("metadata", {}).get("harness")} for item in manifests]
-    if shared[0] != shared[1]:
-        fail("package runtime manifestが一致しない")
-    manifest = manifests[0]
-    harness = manifest.get("metadata", {}).get("harness", {})
-    expected = [f"./skills/{identifier}" for identifier in IDS]
-    if manifest.get("skills") != expected:
-        fail("package skillsが直接公開skill 4件と一致しない")
-    if "playbooks" in harness or "internalPlugins" in harness or "installationSurface" in harness or "implements" in harness:
-        fail("自己完結skillの直接公開packageにplaybooks / internalPlugins / installationSurface / implementsは置かない")
-    if harness.get("marketplace") != "system-design" or type(harness.get("contractVersion")) is not int:
-        fail("metadata.harnessにmarketplace=system-designと整数contractVersionが要る")
-    for identifier in IDS:
-        validate_entry(package, identifier)
-    print("Repository: passed (1 package, 4 directly published self-contained skills)")
-
-
-def expect_rejected(repository: Path, label: str, needle: str, mutate) -> None:
-    with tempfile.TemporaryDirectory(prefix="system-design-validator-") as value:
-        candidate = Path(value) / "repository"
-        shutil.copytree(repository, candidate, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        mutate(candidate)
-        try:
-            validate_repository(candidate)
-        except (ValidationError, OSError, UnicodeError) as exc:
-            if needle not in str(exc):
-                fail(f"負例「{label}」が期待した理由で失敗しない: {exc}")
-            print(f"Negative: passed ({label})")
-        else:
-            fail(f"負例「{label}」を拒否できない")
+    skills = repository / "plugins/system-design/skills"
+    entries = sorted(path.name for path in skills.iterdir() if path.is_dir())
+    for identifier in entries:
+        root = skills / identifier
+        text = (root / "SKILL.md").read_text(encoding="utf-8")
+        linked = {root / link for link in LINK.findall(text)}
+        references = set((root / "references").glob("*.md"))
+        if linked != references:
+            raise ValidationError(f"{identifier} の SKILL.md から全 reference へ直接リンクしていない")
+        for sibling in set(entries) - {identifier}:
+            name = re.escape(sibling)
+            if re.search(rf"(?:skills/|\.\./){name}/|(?<![A-Za-z0-9_-]){name}/(?:references|scripts)/", text):
+                raise ValidationError(f"{identifier} の SKILL.md が兄弟の入口の path を書いている: {sibling}")
+    print(f"Repository: passed ({len(entries)} entries)")
 
 
 def self_test(repository: Path) -> None:
-    validate_repository(repository)
-
-    for label, replacement in (
-        ("frontmatter nameのYAML comment", "name: discover-requirements # 公開identity"),
-        ("frontmatter nameのquoted scalar", 'name: "discover-requirements"'),
-    ):
-        with tempfile.TemporaryDirectory(prefix="system-design-frontmatter-") as value:
+    def mutated(label: str, change, needle: str | None) -> None:
+        with tempfile.TemporaryDirectory(prefix="system-design-validator-") as value:
             candidate = Path(value) / "repository"
             shutil.copytree(repository, candidate, ignore=shutil.ignore_patterns(".git", "__pycache__"))
             path = candidate / "plugins/system-design/skills/discover-requirements/SKILL.md"
-            path.write_text(path.read_text(encoding="utf-8").replace("name: discover-requirements", replacement, 1), encoding="utf-8")
-            validate_repository(candidate)
+            path.write_text(change(path.read_text(encoding="utf-8")), encoding="utf-8")
+            try:
+                validate_repository(candidate)
+            except ValidationError as exc:
+                if needle is None or needle not in str(exc):
+                    raise ValidationError(f"「{label}」が期待と違う理由で失敗した: {exc}") from exc
+                print(f"Negative: passed ({label})")
+                return
+            if needle is not None:
+                raise ValidationError(f"「{label}」を拒否できない")
             print(f"Positive: passed ({label})")
 
-    def remove_entry(root: Path) -> None:
-        (root / "plugins/system-design/skills/discover-requirements/SKILL.md").unlink()
-
-    def rename_entry(root: Path) -> None:
-        path = root / "plugins/system-design/skills/discover-workload-model/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8").replace("name: discover-workload-model", "name: wrong-name", 1), encoding="utf-8")
-
-    def body_only_name(root: Path) -> None:
-        path = root / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        text = path.read_text(encoding="utf-8").replace("name: discover-requirements\n", "", 1)
-        path.write_text(text + "\nname: discover-requirements\n", encoding="utf-8")
-
-    def missing_name(root: Path) -> None:
-        path = root / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8").replace("name: discover-requirements\n", "", 1), encoding="utf-8")
-
-    def sibling_path(root: Path) -> None:
-        path = root / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8") + "\n詳しくは ../design-cloud-architecture/references/ を読む。\n", encoding="utf-8")
-
-    with tempfile.TemporaryDirectory(prefix="system-design-sibling-") as value:
-        candidate = Path(value) / "repository"
-        shutil.copytree(repository, candidate, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        path = candidate / "plugins/system-design/skills/discover-requirements/SKILL.md"
-        path.write_text(path.read_text(encoding="utf-8") + "\n構成は `design-cloud-architecture` が決め、資料は `write-doc` が書く。\n", encoding="utf-8")
-        validate_repository(candidate)
-        print("Positive: passed (兄弟と外部の入口名を挙げる境界の宣言)")
-
-    expect_rejected(repository, "兄弟の入口のpath", "兄弟の入口のpath", sibling_path)
-    expect_rejected(repository, "公開skill欠落", "regular fileではない", remove_entry)
-    expect_rejected(repository, "公開skill identity不一致", "nameが不一致", rename_entry)
-    expect_rejected(repository, "本文だけの偽name", "frontmatter name", body_only_name)
-    expect_rejected(repository, "frontmatter name欠落", "frontmatter name", missing_name)
+    mutated("入口名を挙げるだけの文", lambda text: text + "\n構成は `design-cloud-architecture` が決める。\n", None)
+    mutated("兄弟の入口の path", lambda text: text + "\n詳しくは ../design-cloud-architecture/references/ を読む。\n", "兄弟の入口の path")
+    mutated("reference へのリンクの欠落", lambda text: text.replace("](references/workload-model.md)", "]"), "全 reference へ直接リンクしていない")
     print("Validator self-test: passed")
 
 
@@ -248,4 +83,5 @@ if __name__ == "__main__":
     try:
         main()
     except (ValidationError, OSError, UnicodeError) as exc:
-        raise SystemExit(f"FAIL: {exc}")
+        print(f"FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1)
