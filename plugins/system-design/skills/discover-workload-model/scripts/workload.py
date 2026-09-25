@@ -47,7 +47,7 @@ SRC = re.compile(r"^SRC-\d{3,}$")
 ANY_HYP_OR_OQ = re.compile(r"^[A-Z]{2,}-(HYP|OQ)-\d{3,}$")
 
 
-def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -> dict:
+def check_document(doc: Document, registry: Registry, upstream: list[str]) -> dict:
     doc.check_opening()
     rows = trace_table(doc, ["ID", "設計入力", "根拠と状態", "影響する要求・判断"])
     design_inputs: list[str] = []
@@ -90,7 +90,7 @@ def check(body: str, upstream: list[str]) -> dict:
     registry = Registry(LOCAL_FAMILIES, UPSTREAM_FAMILIES)
     for path_text in upstream:
         registry.add_upstream(read_upstream(path_text), path_text)
-    return check_human_format(doc, registry, upstream)
+    return check_document(doc, registry, upstream)
 
 
 def main() -> int:
