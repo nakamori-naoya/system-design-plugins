@@ -7,8 +7,6 @@
   },
   "skills": [
     "./skills/discover-requirements",
-    "./skills/discover-workload-model",
-    "./skills/discover-quality-requirements",
     "./skills/design-cloud-architecture"
   ],
   "interface": {
