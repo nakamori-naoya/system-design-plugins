@@ -29,7 +29,13 @@ class WorkloadContractTest(CanonCase):
         self.assert_pass(self.mutate("## データ量と保持", "## どれだけのデータを、いつまで持つか"))
 
     def test_trace_section_is_required(self) -> None:
-        self.assert_fail(self.mutate("## 追跡情報", "## 対応"), "追跡情報がありません")
+        # 見出しの文言は読まない。追跡の表は見出し行で見つける
+        self.assert_pass(self.mutate("## 追跡情報", "## 対応"))
+        self.assert_fail(self.mutate("| ID | 設計入力 | 根拠と状態 | 影響する要求・判断 |", "| ID | 入力 | 根拠と状態 | 影響する要求・判断 |"), "「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の見出し行を持つ追跡の表がありません")
+        body = self.body()
+        start = body.index("| ID | 設計入力 | 根拠と状態 | 影響する要求・判断 |")
+        table = (body[start:] + "\n\n").split("\n\n", 1)[0]
+        self.assert_fail(body + "\n\n## 付録\n\n" + table + "\n", "「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の表が 2 個あります")
 
     def test_trace_ids_are_closed(self) -> None:
         self.assert_fail(self.mutate("| WL-004 |", "| LOAD-004 |"), "DIN- / WL- / <接頭辞>-OQ-")

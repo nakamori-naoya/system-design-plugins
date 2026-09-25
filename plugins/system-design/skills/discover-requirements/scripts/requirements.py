@@ -3,20 +3,20 @@
 
   python3 scripts/requirements.py check < <要求発見資料の本文（Markdown）>
 
-基準資料: write-doc の requirements-discovery 型の template と見本。本文の見出しは素材と読み手に合わせて名付けてよく、
-  後続資料がIDで参照する要求と未決は、末尾の「追跡情報」の節の表に置く。
+基準資料: write-doc の公開契約「検査が読む目印」の requirements-discovery。見出しの文言は読まない。
+  後続資料がIDで参照する要求と未決は、見出し行が決まった追跡の表に置く（どの見出しの下でもよい）。
 入力: 標準入力の本文（UTF-8 Markdown）だけ。上流資料は無い。一時fileは作らず、保存はwrite-docが行う。
-正規化: HTMLコメントを除き、コードブロック外の見出しで節へ切る。表のセルの `*` と backtick を除く。
+正規化: HTMLコメントを除き、コードブロック外のH2見出しで節へ切る（見出しの文言は比べない）。表のセルの `*` と backtick を除く。
 合格述語:
   - H1と、最初のH2より前の本文段落（表・引用・箇条書きで始めない）があり、H2が1つ以上あり、どのH2節も空でない
-  - 「追跡情報」の節に「ID | 本文で扱う要求 | 根拠」の表があり、IDが REQ- / DRV- / CON- / DEC- のどれかで一意、
+  - 見出し行が「ID | 本文で扱う要求 | 根拠」の表が資料に1つあり、IDが REQ- / DRV- / CON- / DEC- のどれかで一意、
     本文で扱う要求と根拠が空でなく、REQ- が1つ以上ある
-  - 同じ節に「ID | 状態 | 後続で決める論点」の表があれば、IDが REQ-HYP- / REQ-OQ- で一意、
+  - 見出し行が「ID | 状態 | 後続で決める論点」の表があれば（資料に1つまで）、IDが REQ-HYP- / REQ-OQ- で一意、
     状態が REQ-HYP- なら hypothesis、REQ-OQ- なら open_question
 失敗時の診断: 標準エラーに `FAIL: <理由>`（節名、ID、列）を1件。終了code 2。
 正例: tests/fixtures/discover-requirements/success.md（write-doc の見本と同じ本文。status: unresolved）。
-反例: 追跡情報の節が無い、IDの形式が違う、IDの重複、根拠が空、REQ- が無い、状態とIDの種別の食い違い、冒頭が表。
-境界例: 未決の表が無ければ status: ready。見出しの名前と順序は問わない。
+反例: 追跡の表が無いか2つある、IDの形式が違う、IDの重複、根拠が空、REQ- が無い、状態とIDの種別の食い違い、冒頭が表。
+境界例: 未決の表が無ければ status: ready。見出しの名前と順序は問わず、追跡の表を置く見出しを改名しても通る。ほかの列の表は検査しない。
 意味評価として残す範囲: 要求と根拠の分類が正しいか、見出しと本文が読み手の判断に足りるか、未決の扱いが妥当か。
 
 exit 0 = 通った（stdoutに status と ID の一覧のJSON） / 2 = 標準入力が空、または述語が成り立たない。
@@ -31,9 +31,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from canon import ContractError, Document, fail, read_stdin, strip_markup, tables  # noqa: E402
+from canon import ContractError, Document, fail, read_stdin, strip_markup, trace_table  # noqa: E402
 
-TRACE = "追跡情報"
 REQUIREMENT_COLUMNS = ["ID", "本文で扱う要求", "根拠"]
 ROUTED_COLUMNS = ["ID", "状態", "後続で決める論点"]
 LOCAL_ID = re.compile(r"^(REQ|DRV|CON|DEC)-\d{3,}$")
@@ -42,34 +41,9 @@ ROUTED_ID = re.compile(r"^REQ-(HYP|OQ)-\d{3,}$")
 
 def check(body: str) -> dict:
     doc = Document(body)
-    if doc.title is None:
-        fail("文書題名（H1）がありません")
-    intro = [line for line in doc.intro if line.strip()]
-    if not intro:
-        fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
-    if intro[0].lstrip().startswith(("|", ">", "- ", "* ", "```")):
-        fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
-    if not doc.order:
-        fail("本文を判断単位へ分けるH2見出しがありません")
-    for name in doc.order:
-        if not any(line.strip() for line in doc.sections[name]):
-            fail(f"節が空です: {name}")
-    if TRACE not in doc.sections:
-        fail("後続資料へ渡す要求の追跡情報の節がありません")
-
-    requirement_rows = None
-    routed_rows: list[dict[str, str]] = []
-    for table in tables(doc.lines(TRACE)):
-        header = [strip_markup(cell) for cell in table["header"]]
-        rows = [dict(zip(header, row)) for row in table["rows"]]
-        if header == REQUIREMENT_COLUMNS:
-            requirement_rows = rows
-        elif header == ROUTED_COLUMNS:
-            routed_rows = rows
-        else:
-            fail(f"追跡情報の表の列が契約と違います: {header}")
-    if requirement_rows is None:
-        fail(f"追跡情報に「{' | '.join(REQUIREMENT_COLUMNS)}」の表がありません")
+    doc.check_opening()
+    requirement_rows = trace_table(doc, REQUIREMENT_COLUMNS)
+    routed_rows = trace_table(doc, ROUTED_COLUMNS, required=False)
 
     seen: set[str] = set()
     ids: dict[str, list[str]] = {"REQ": [], "DRV": [], "CON": [], "DEC": []}
@@ -77,7 +51,7 @@ def check(body: str) -> dict:
         identifier = strip_markup(row.get("ID", ""))
         match = LOCAL_ID.fullmatch(identifier)
         if not match:
-            fail(f"追跡情報のIDは REQ- / DRV- / CON- / DEC- でなければなりません: {identifier}")
+            fail(f"追跡の表のIDは REQ- / DRV- / CON- / DEC- でなければなりません: {identifier}")
         if identifier in seen:
             fail(f"IDが重複しています: {identifier}")
         seen.add(identifier)
@@ -86,7 +60,7 @@ def check(body: str) -> dict:
                 fail(f"{identifier} の{column}が空です")
         ids[match.group(1)].append(identifier)
     if not ids["REQ"]:
-        fail("追跡情報に REQ- がありません")
+        fail("追跡の表に REQ- がありません")
 
     hypotheses: list[str] = []
     open_questions: list[str] = []

@@ -36,12 +36,18 @@ class RequirementsContractTest(CanonCase):
         self.assert_pass(self.mutate("## 利用者と権限の範囲", "## 誰が何をできるか"))
 
     def test_trace_section_is_required(self) -> None:
-        self.assert_fail(self.mutate("## 追跡情報", "## 対応表"), "追跡情報の節がありません")
+        # 見出しの文言は読まない。追跡の表は見出し行で見つける
+        self.assert_pass(self.mutate("## 追跡情報", "## 対応表"))
+        self.assert_fail(self.mutate("| ID | 本文で扱う要求 | 根拠 |", "| ID | 要求 | 根拠 |"), "「ID | 本文で扱う要求 | 根拠」の見出し行を持つ追跡の表がありません")
+        body = self.body()
+        start = body.index("| ID | 本文で扱う要求 | 根拠 |")
+        table = (body[start:] + "\n\n").split("\n\n", 1)[0]
+        self.assert_fail(body + "\n\n## 付録\n\n" + table + "\n", "「ID | 本文で扱う要求 | 根拠」の表が 2 個あります")
 
     def test_requirement_ids_are_closed_and_unique(self) -> None:
         self.assert_fail(self.mutate("| DRV-002 |", "| DRV-2 |"), "REQ- / DRV- / CON- / DEC-")
         self.assert_fail(self.mutate("| DRV-002 |", "| DRV-001 |"), "IDが重複しています: DRV-001")
-        self.assert_fail(self.mutate("| CON-002 | 2026年12月末までに単一拠点で運用を始める | 事業責任者との合意 |", "| CON-002 | 2026年12月末までに単一拠点で運用を始める |  |"), "CON-002 の根拠が空です")
+        self.assert_fail(self.mutate("| CON-002 | 2026年12月末までに単一拠点で運用を始める | 事業責任者との合意 |", "| CON-002 | 2026年12月末までに単一拠点で運用を始める |  |"), "「ID | 本文で扱う要求 | 根拠」の表8行目「根拠」が空です")
 
     def test_routed_state_matches_id_kind(self) -> None:
         self.assert_fail(self.mutate("| REQ-HYP-001 | hypothesis |", "| REQ-HYP-001 | open_question |"), "REQ-HYP-001 の状態は hypothesis")

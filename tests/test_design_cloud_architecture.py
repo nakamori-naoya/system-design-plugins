@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """design-cloud-architecture の検査script（architecture.py）の正例・反例・境界例。
 
-基準資料: write-docの cloud-architecture template が定める記法（scriptのdocstringに述語を列挙）。
-入力: 標準入力のMarkdown本文、--provider、--upstream の要求発見・利用負荷・品質要求資料（fixture）。
+基準資料: write-doc の公開契約「検査が読む目印」の cloud-architecture（scriptのdocstringに述語を列挙）。
+入力: 標準入力のMarkdown本文、--upstream の要求発見・利用負荷・品質要求資料（fixture）。
 """
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from canon_case import ARCHITECTURE, QUALITY, REQUIREMENTS, SKILLS, WORKLOAD, CanonCase
@@ -15,60 +16,68 @@ from canon_case import ARCHITECTURE, QUALITY, REQUIREMENTS, SKILLS, WORKLOAD, Ca
 class ArchitectureContractTest(CanonCase):
     script = SKILLS / "design-cloud-architecture/scripts/architecture.py"
     fixture = ARCHITECTURE
-    arguments = ["--provider", "aws", "--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD), "--upstream", str(QUALITY)]
+    arguments = ["--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD), "--upstream", str(QUALITY)]
 
     def test_success_fixture_passes(self) -> None:
         payload = self.assert_pass(self.body())
         self.assertEqual(payload["document_type"], "cloud-architecture")
         self.assertEqual(payload["status"], "unresolved")
-        self.assertEqual(payload["provider"], "aws")
         self.assertEqual(payload["provider_constraints"], ["CON-001"])
         self.assertEqual(payload["nodes"], ["NODE-EDGE", "NODE-API", "NODE-DB", "NODE-QUEUE", "NODE-NOTIFY"])
-        self.assertEqual(payload["unresolved_capabilities"], ["バックアップ/DR"])
+        self.assertEqual(payload["unresolved_elements"], ["NODE-NOTIFY"])
+        self.assertEqual(payload["open_questions"], ["ARC-OQ-001", "WL-OQ-001", "REQ-OQ-001", "QR-OQ-001"])
         self.assertEqual(payload["accepted_adrs"], [])
+        self.assertNotIn("provider", payload)
 
-    def test_provider_is_a_public_input(self) -> None:
-        self.arguments = ["--upstream", str(REQUIREMENTS), "--upstream", str(WORKLOAD), "--upstream", str(QUALITY)]
-        self.assert_fail(self.body(), "aws または gcp", "--provider", "azure")
-        self.assert_fail(self.body(), "入力provider（GCP）と一致しません", "--provider", "gcp")
-        result = self.run_check(self.body())
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("--provider", result.stderr)
+    def test_resolved_copy_is_ready(self) -> None:
+        body = self.body()
+        body = body.replace("CON-001、REQ-002、WL-001、QR-001、QR-OQ-001、hypothesis", "CON-001、REQ-002、WL-001、QR-001、QR-OQ-001、agreed_decision")
+        body = re.sub(r"^\| (ARC-OQ-001|WL-OQ-001|REQ-OQ-001|QR-OQ-001) \|.*\n", "", body, flags=re.M)
+        body = body.replace("REQ-004、WL-003、REQ-OQ-001、open_question", "REQ-004、WL-003、hypothesis")
+        body = re.sub(r"`(REQ-OQ-001|WL-OQ-001|QR-OQ-001|ARC-OQ-001)`", "未決", body)
+        body = re.sub(r"(QR-OQ-001|ARC-OQ-001)", "未決", body)
+        self.assertEqual(self.assert_pass(body)["status"], "ready")
+
+    def test_headings_are_not_read(self) -> None:
+        self.assert_pass(self.mutate("## ADR\n", "## 構成は一つの判断で決めた\n"))
+        self.assert_pass(self.mutate("## 追跡の表\n", "## IDの一覧\n"))
+        self.assert_pass(self.mutate("## 構成図\n", "## 通知だけが非同期の経路を通る\n"))
+
+    def test_trace_table_is_required_and_single(self) -> None:
+        self.assert_fail(self.mutate("| ID | 内容 | 根拠と状態 |", "| ID | 説明 | 根拠と状態 |"), "追跡の表がありません")
+        body = self.body()
+        start = body.index("| ID | 内容 | 根拠と状態 |")
+        table = (body[start:] + "\n\n").split("\n\n", 1)[0]
+        self.assert_fail(body + "\n\n## 付録\n\n" + table + "\n", "表が 2 個あります")
+
+    def test_ids_and_states(self) -> None:
+        self.assert_fail(self.mutate("| FAIL-002 |", "| FAIL-001 |"), "IDが重複しています: FAIL-001")
+        self.assert_fail(self.mutate("| NODE-DB |", "| DB-NODE |"), "追跡の表のIDは")
+        self.assert_fail(self.mutate("CON-001、REQ-002、WL-001、QR-001、QR-OQ-001、hypothesis", "CON-001、REQ-002、WL-001、QR-001、QR-OQ-001、open_question"), "ADR-001.根拠と状態")
+        self.assert_fail(self.mutate("| ARC-HYP-001 | 単一リージョン・複数AZでQR-OQ-001を満たせる | ADR-001、NODE-DB、hypothesis |", "| ARC-HYP-001 | 単一リージョン・複数AZでQR-OQ-001を満たせる | ADR-001、NODE-DB、open_question |"), "ARC-HYP-001.根拠と状態")
+        self.assert_fail(self.mutate("NODE-QUEUE、QR-003、hypothesis", "NODE-QUEUE、QR-003、hypothesis、agreed_decision"), "FAIL-001.根拠と状態")
+
+    def test_citations(self) -> None:
+        self.assert_fail(self.mutate("REQ-004、WL-003、QR-003、hypothesis", "hypothesis"), "NODE-QUEUE の根拠と状態は CON- か上流のIDを1つ以上")
+        self.assert_fail(self.mutate("NODE-DB、QR-001、hypothesis", "QR-001、hypothesis"), "FAIL-002 の根拠と状態は起点の NODE-")
+        self.assert_fail(self.mutate("NODE-DB、QR-001、hypothesis", "NODE-CACHE、QR-001、hypothesis"), "参照が未解決です: NODE-CACHE")
 
     def test_provider_constraint_must_be_agreed(self) -> None:
-        self.assert_fail(self.mutate("| CON-001 | agreed_decision |", "| CON-001 | hypothesis |"), "agreed_decision の CON-（入力providerの根拠）がありません")
-        self.assert_fail(self.mutate("| プロバイダー | AWS | GCP | CON-001 |", "| プロバイダー | AWS | GCP | REQ-001 |"), "プロバイダー の根拠IDに agreed_decision の CON- がありません")
-        self.assert_fail(self.mutate("| 単一プロバイダーへ依存する | agreed_decision |", "| 単一プロバイダーへ依存する | hypothesis |"), "プロバイダー は入力providerの合意なので agreed_decision")
+        self.assert_fail(self.mutate("プロバイダーはAWS | agreed_decision |", "プロバイダーはAWS | hypothesis |"), "agreed_decision の CON- がありません")
 
-    def test_twelve_capabilities_once(self) -> None:
-        self.assert_fail(self.mutate("| デリバリー | GitHub ActionsからECSへのローリング更新 |", "| 配置 | GitHub ActionsからECSへのローリング更新 |"), "代替案比較.選定項目 は")
-        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito |", "| エッジ | 非該当 | Cognito |"), "12選定項目を各1行")
-
-    def test_selection_state_rules(self) -> None:
-        self.assert_fail(self.mutate("| バックアップ/DR | 未決 |", "| バックアップ/DR | 大阪への複製 |"), "open_question なので採用候補は 未決")
-        self.assert_fail(self.mutate("| QR-OQ-001、ARC-OQ-001 | 該当なし |", "| QR-001 | 該当なし |"), "open_question なので根拠IDに決める問い")
-        self.assert_fail(self.mutate("| ID管理 | 非該当 | Cognito | CON-001 |", "| ID管理 | Cognito | なし | CON-001 |"), "not_applicable なので採用候補は 非該当")
-        self.assert_fail(self.mutate("| 計算処理 | ECS on Fargate | EKS、Lambda |", "| 計算処理 | ECS on Fargate | なし |"), "比較のため代替案が1つ以上必要")
-        self.assert_fail(self.mutate("| ARC-OQ-001 | `open_question` | リージョン障害時に何時間で復旧すべきか |", "| ARC-OQ-002 | `open_question` | リージョン障害時に何時間で復旧すべきか |"), "参照が未解決です: ARC-OQ-001")
-
-    def test_nodes_appear_in_diagram_and_trace(self) -> None:
-        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("予約データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
-        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("NODE-DB-REPLICA<br/>予約データベース")]'), "インフラ構成図に現れない図ノードがあります: ['NODE-DB']")
+    def test_diagram(self) -> None:
+        self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("予約データベース")]'), "構成図に現れない NODE- があります: ['NODE-DB']")
+        self.assert_fail(self.mutate('    NODE_QUEUE["NODE-QUEUE<br/>通知キュー"]\n', '    NODE_QUEUE["NODE-QUEUE<br/>通知キュー"]\n    NODE_DB_REPLICA["NODE-DB-REPLICA<br/>複製"]\n'), "構成図の NODE- が追跡の表にありません: ['NODE-DB-REPLICA']")
         self.assert_fail(self.mutate("    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n  end\n", "    NODE_QUEUE[\"NODE-QUEUE<br/>通知キュー\"]\n"), "subgraph と end が対応していません")
-        self.assert_fail(self.mutate("flowchart LR", "graph LR"), "flowchart で始め")
-        self.assert_fail(self.mutate("| ADR-001 | NODE-QUEUE、NODE-NOTIFY |", "| ADR-001 | NODE-NOTIFY |"), "要求トレーサビリティに現れない ADR / 図ノードがあります: ['NODE-QUEUE']")
-        self.assert_fail(self.mutate("| NODE-DB | 予約データベース。", "| NODE_DB | 予約データベース。"), "図ノードIDの形式が不正です")
-
-    def test_failure_path_origin_is_a_node(self) -> None:
-        self.assert_fail(self.mutate("| FAIL-001 | NODE-NOTIFY |", "| FAIL-001 | SQS |"), "FAIL-001 の起点は NODE- でなければなりません")
-        self.assert_fail(self.mutate("| FAIL-001 | NODE-NOTIFY |", "| FAIL-001 | NODE-CACHE |"), "参照が未解決です: NODE-CACHE")
-
-    def test_adr_state_vocabulary(self) -> None:
-        self.assert_fail(self.mutate("複数リージョン構成を再検討する | hypothesis |", "複数リージョン構成を再検討する | accepted |"), "ADR-001.状態 の根拠状態は")
+        self.assert_fail(self.mutate("flowchart LR", "graph LR"), "flowchart で始まる mermaid ブロックが1つ必要です（見つかったブロック: 0）")
+        body = self.body()
+        start = body.index("```mermaid")
+        diagram = body[start:body.index("```\n", start + 3) + 4]
+        self.assert_fail(body + "\n" + diagram, "見つかったブロック: 2")
 
     def test_upstream_reference_and_missing_upstream(self) -> None:
-        self.assert_fail(self.mutate("| REQ-001 | agreed_decision | 施設管理者が利用枠を公開できる |", "| REQ-009 | agreed_decision | 施設管理者が利用枠を公開できる |"), "上流参照が未解決です: REQ-009")
-        self.arguments = ["--provider", "aws"]
+        self.assert_fail(self.mutate("REQ-001、REQ-002、REQ-003、WL-001", "REQ-009、REQ-002、REQ-003、WL-001"), "上流参照が未解決です: REQ-009")
+        self.arguments = []
         self.assert_fail(self.body(), "--upstream で上流資料が渡されていません")
 
 

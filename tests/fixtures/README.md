@@ -5,16 +5,16 @@
 - `discover-requirements/success.md`: 要求発見資料（上流なし）。`status: unresolved`。
 - `discover-workload-model/success.md`: 利用負荷モデル資料。`--upstream` に要求発見fixture。
 - `discover-quality-requirements/success.md`: 品質要求資料。`--upstream` に要求発見・利用負荷fixture。
-- `design-cloud-architecture/success.md`: クラウドアーキテクチャ資料。`--provider aws`、`--upstream` に上流3 fixture。
+- `design-cloud-architecture/success.md`: クラウドアーキテクチャ資料。`--upstream` に上流3 fixture。
 - `terminology/success.md`: 共有用語定義の正例。要求発見fixtureの `## 用語` が参照し、`terminology.py` が同じ所在・版・推奨用語名・コマンド／クエリの操作名を検査する。
 
 4本は同じ架空の対象（申請結果確認）で上流→下流の参照が閉じている。案件固有の値を既定値や例の正解にしない。fixtureの存在を実モデル評価の成功として扱わない。
 
 ## 検査scriptの契約（4入口共通）
 
-- 基準資料: write-docの各文書型templateが定める記法と、`--upstream` の上流資料が定義するID。
-- 入力: 標準入力の本文。`--upstream`（複数可）。`design-cloud-architecture` は `--provider`。
-- 正規化: HTMLコメントを除き、H2で節を切り、表を見出し行・本文行に分け、`<接頭辞>-<数字>` のIDを拾う。
+- 基準資料: write-docの公開契約「検査が読む目印」と、`--upstream` の上流資料が定義するID。
+- 入力: 標準入力の本文。`--upstream`（複数可）。
+- 正規化: HTMLコメントを除き、H2で節を切り（見出しの文言は比べない）、表を見出し行・本文行に分け、`<接頭辞>-<数字>` のIDを拾う。
 - 合格述語・診断・正例・反例・境界例・意味評価として残す範囲: 各入口の `references/*-contract.md`「基準資料の記法と機械検査の宣言」。
 - 出力: 終了code 0でstdoutに `verified: true`、`status`（`ready` / `unresolved`）、ID一覧のJSON。不合格は終了code 2でstderrに `FAIL: <理由>`。
 
