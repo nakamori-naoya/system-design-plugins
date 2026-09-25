@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """system-design 4入口が共有する、Markdown資料の構文解析と共通述語。
 
-このmoduleは意味を評価しない。読むのは、write-docのtemplateが定める記法（H2見出しの名前と順序、
-`### <ID>: <一文>` の小見出しとそのラベル行、表の見出し行と本文行、`<接頭辞>-<数字>` のID、
-根拠状態の機械値）だけである。各入口のscriptはこのmoduleを使って、自分の型に固有の述語を重ねる。
+このmoduleは意味を評価しない。読むのは、write-docの公開契約「検査が読む目印」が宣言する目印（H1と冒頭の本文段落、
+決まった見出し行を持つ追跡の表、`<接頭辞>-<数字>` のID、根拠状態の機械値、Mermaidブロック）だけで、
+見出しの文言は読まない。各入口のscriptはこのmoduleを使って、自分の型に固有の述語を重ねる。
 
   - 入力は標準入力の本文（UTF-8 Markdown）と、引数で渡された上流基準資料のpathだけ。一時fileは作らない。
   - 失敗は ContractError で診断を返し、呼び手が `FAIL: <理由>` を標準エラーへ書いて終了code 2にする。
@@ -20,8 +20,6 @@ ID_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])([A-Z]{2,}(?:-[A-Z]{2,})*-\d{3,})(?![A
 NODE_TOKEN = re.compile(r"(?<![A-Za-z0-9_-])(NODE-[A-Z0-9]+(?:-[A-Z0-9]+)*)(?![A-Za-z0-9_-])")
 NUMBER_WITH_UNIT = re.compile(r"^\d[\d,\.]*\s*[^\d\s].*$")
 EVIDENCE_STATES = ("fact", "agreed_decision", "hypothesis", "open_question")
-CONFIRMED_STATES = ("fact", "agreed_decision")
-LABEL_LINE = re.compile(r"^([^:：]+?)[:：]\s*(.*)$")
 
 
 class ContractError(ValueError):
@@ -63,15 +61,16 @@ def strip_comments(body: str) -> str:
 
 
 class Document:
-    """H2で切った節、冒頭段落、全見出し。コードブロック内の`#`は見出しに数えない。"""
+    """H2で切った節、冒頭段落。コードブロック内の`#`は見出しに数えない。同じ見出しの節は後の節を別の節として保つ。"""
 
     def __init__(self, body: str) -> None:
         self.body = strip_comments(body)
         self.order: list[str] = []
         self.sections: dict[str, list[str]] = {}
+        self.blocks: list[list[str]] = []
         self.intro: list[str] = []
         self.title: str | None = None
-        current: str | None = None
+        current: list[str] | None = None
         in_code = False
         for line in self.body.splitlines():
             if line.startswith("```"):
@@ -83,42 +82,41 @@ class Document:
                     self.title = title
                     continue
                 if level == 2:
-                    if title in self.sections:
-                        fail(f"H2見出しが重複しています: {title}")
-                    current = title
+                    current = []
+                    self.blocks.append(current)
                     self.order.append(title)
-                    self.sections[title] = []
+                    self.sections.setdefault(title, current)
                     continue
             if current is None:
                 self.intro.append(line)
             else:
-                self.sections[current].append(line)
-
-    def require_sections(self, expected: list[str]) -> None:
-        if self.title is None:
-            fail("文書題名（H1）がありません")
-        if self.order != expected:
-            missing = [name for name in expected if name not in self.order]
-            extra = [name for name in self.order if name not in expected]
-            fail(
-                "H2見出しがtemplateの名前と順序に一致しません: "
-                f"missing={missing}, extra={extra}, order={self.order}"
-            )
-        intro_text = [line for line in self.intro if line.strip()]
-        if not intro_text:
-            fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
-        first = intro_text[0].lstrip()
-        if first.startswith(("|", ">", "- ", "* ", "```")):
-            fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
-        for name in expected:
-            if not any(line.strip() for line in self.sections[name]):
-                fail(f"節が空です: {name}")
+                current.append(line)
 
     def lines(self, name: str) -> list[str]:
         return self.sections[name]
 
-    def text(self, name: str) -> str:
-        return "\n".join(self.sections[name])
+    def all_lines(self) -> list[str]:
+        """冒頭と全H2節の行。見出しの行は含まない。"""
+        lines = list(self.intro)
+        for block in self.blocks:
+            lines.append("")
+            lines.extend(block)
+        return lines
+
+    def check_opening(self) -> None:
+        """H1、最初のH2より前の本文段落、1つ以上のH2があり、どのH2節も空でない。見出しの文言は見ない。"""
+        if self.title is None:
+            fail("文書題名（H1）がありません")
+        intro_text = [line for line in self.intro if line.strip()]
+        if not intro_text:
+            fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
+        if intro_text[0].lstrip().startswith(("|", ">", "- ", "* ", "```")):
+            fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
+        if not self.blocks:
+            fail("本文を判断単位へ分けるH2見出しがありません")
+        for title, block in zip(self.order, self.blocks):
+            if not any(line.strip() for line in block):
+                fail(f"節が空です: {title}")
 
 
 def tables(lines: list[str]) -> list[dict]:
@@ -141,24 +139,31 @@ def tables(lines: list[str]) -> list[dict]:
     return found
 
 
-def single_table(doc: Document, section: str, columns: list[str]) -> list[dict[str, str]]:
-    """節に表がちょうど1つあり、見出し行がtemplateの列と一致し、本文行が1行以上あることを確かめて行を返す。"""
-    found = tables(doc.lines(section))
-    if len(found) != 1:
-        fail(f"節「{section}」には表が1つ必要です（見つかった表: {len(found)}）")
+def trace_table(doc: Document, columns: list[str], *, required: bool = True) -> list[dict[str, str]]:
+    """見出し行が columns と一致する表（追跡の表）を資料全体から探す。どの見出しの下にあってもよい。
+
+    required なら、ちょうど1つあり本文行が1行以上あることを確かめる。無くてよい表は、無ければ空の list を返す。
+    各行の列数が見出しと一致し、セルが空でないことを確かめて行を返す。
+    """
+    found = [table for table in tables(doc.all_lines()) if table["header"] == columns]
+    label = " | ".join(columns)
+    if len(found) > 1:
+        fail(f"「{label}」の表が {len(found)} 個あります（資料に1つだけ置く）")
+    if not found:
+        if required:
+            fail(f"「{label}」の見出し行を持つ追跡の表がありません")
+        return []
     table = found[0]
-    if table["header"] != columns:
-        fail(f"節「{section}」の表の列がtemplateと一致しません: expected={columns}, actual={table['header']}")
     if not table["rows"]:
-        fail(f"節「{section}」の表に本文行がありません")
+        fail(f"「{label}」の表に本文行がありません")
     rows: list[dict[str, str]] = []
     for index, cells in enumerate(table["rows"], 1):
         if len(cells) != len(columns):
-            fail(f"節「{section}」の表{index}行目の列数が見出しと一致しません: {cells}")
+            fail(f"「{label}」の表{index}行目の列数が見出しと一致しません: {cells}")
         row = dict(zip(columns, cells))
         for column, value in row.items():
             if not value:
-                fail(f"節「{section}」の表{index}行目「{column}」が空です（該当なしは列の指示語を書く）")
+                fail(f"「{label}」の表{index}行目「{column}」が空です")
         rows.append(row)
     return rows
 
@@ -180,51 +185,6 @@ def subsections(lines: list[str], level: int = 3) -> list[tuple[str, list[str]]]
     return found
 
 
-def id_subsections(doc: Document, section: str, pattern: re.Pattern[str], label: str) -> list[tuple[str, str, list[str]]]:
-    """`### <ID>: <一文>` の小見出しを (ID, 一文, 本文行) で返す。IDは pattern に一致する。"""
-    found = subsections(doc.lines(section))
-    if not found:
-        fail(f"節「{section}」に `### <{label}>: <一文>` の小見出しがありません")
-    result: list[tuple[str, str, list[str]]] = []
-    for title, body in found:
-        match = re.match(r"^([A-Z][A-Z0-9-]*?)\s*[:：]\s*(.+)$", strip_markup(title))
-        if not match:
-            fail(f"節「{section}」の小見出しは `### <{label}>: <一文>` の形でなければなりません: {title}")
-        identifier, sentence = match.group(1), match.group(2).strip()
-        if pattern.fullmatch(identifier) is None:
-            fail(f"節「{section}」の小見出しIDの形式が不正です（{label}）: {identifier}")
-        if not sentence:
-            fail(f"節「{section}」の小見出しに一文がありません: {identifier}")
-        if not any(line.strip() for line in body):
-            fail(f"{identifier} の本文が空です")
-        result.append((identifier, sentence, body))
-    return result
-
-
-def labeled_lines(body: list[str], identifier: str, required: list[str]) -> dict[str, str]:
-    """`<ラベル>: <本文>` の行を集め、必須ラベルが揃い、値が空でないことを確かめる。"""
-    values: dict[str, str] = {}
-    for line in body:
-        stripped = strip_markup(line)
-        if not stripped:
-            continue
-        match = LABEL_LINE.match(stripped)
-        if not match:
-            continue
-        key = match.group(1).strip()
-        if key in required:
-            if key in values:
-                fail(f"{identifier} のラベル行が重複しています: {key}")
-            values[key] = match.group(2).strip()
-    missing = [key for key in required if key not in values]
-    if missing:
-        fail(f"{identifier} にラベル行がありません: {missing}")
-    empty = [key for key in required if not values[key]]
-    if empty:
-        fail(f"{identifier} のラベル行が空です: {empty}")
-    return values
-
-
 def ids_in(text: str) -> list[str]:
     found = [match.group(1) for match in ID_TOKEN.finditer(text)]
     found += [match.group(1) for match in NODE_TOKEN.finditer(text)]
@@ -241,11 +201,6 @@ def family(identifier: str) -> str:
     return identifier.rsplit("-", 1)[0]
 
 
-def split_ids(cell: str) -> list[str]:
-    """`、` 区切りのセルからIDだけを取り出す。`なし` / `未作成` などの指示語はIDではないので空になる。"""
-    return ids_in(cell)
-
-
 def evidence_states_in(text: str) -> list[str]:
     stripped = strip_markup(text)
     return [state for state in EVIDENCE_STATES if re.search(rf"(?<![a-z_]){state}(?![a-z_])", stripped)]
@@ -256,31 +211,6 @@ def one_state(cell: str, allowed: tuple[str, ...], label: str) -> str:
     if len(states) != 1 or states[0] not in allowed:
         fail(f"{label} の根拠状態は {list(allowed)} のどれか1つでなければなりません: {cell}")
     return states[0]
-
-
-def some_states(cell: str, allowed: tuple[str, ...], label: str) -> list[str]:
-    """1つ以上の根拠状態を持ち、そのすべてが allowed に収まる（複数の根拠を持つセル用）。"""
-    states = evidence_states_in(cell)
-    if not states or any(state not in allowed for state in states):
-        fail(f"{label} の根拠状態は {list(allowed)} から1つ以上でなければなりません: {cell}")
-    return states
-
-
-def one_of(cell: str, allowed: tuple[str, ...], label: str) -> str:
-    value = strip_markup(cell)
-    if value not in allowed:
-        fail(f"{label} は {list(allowed)} のどれかでなければなりません: {cell}")
-    return value
-
-
-def number_with_unit(cell: str, label: str, *, placeholders: tuple[str, ...] = ("未決", "非該当")) -> bool:
-    """`<数値><単位>` か指示語かを確かめる。指示語なら False、数値なら True を返す。"""
-    value = strip_markup(cell)
-    if value in placeholders:
-        return False
-    if NUMBER_WITH_UNIT.match(value) is None:
-        fail(f"{label} は `<数値><単位>` または {list(placeholders)} でなければなりません: {cell}")
-    return True
 
 
 class Registry:
@@ -301,8 +231,7 @@ class Registry:
     def add_upstream(self, text: str, path_text: str) -> None:
         self.upstream_given = True
         document = Document(text)
-        for name in document.order:
-            lines = document.lines(name)
+        for lines in [document.intro, *document.blocks]:
             for table in tables(lines):
                 for row in table["rows"]:
                     if row:
