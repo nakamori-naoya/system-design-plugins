@@ -28,8 +28,7 @@
   },
   "metadata": {
     "harness": {
-      "marketplace": "system-design",
-      "contractVersion": 1
+      "marketplace": "system-design"
     }
   }
 }
