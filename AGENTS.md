@@ -1,4 +1,4 @@
-> 作業を始める前に、workspace規約入口 `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md` を読み、そこから指定される共通規約とこのrepository固有の規則を適用する。
+> 共通の規約は /Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/AGENTS.md にある。ここには、この repository だけの規則を置く。
 
 # AGENTS.md
 
@@ -13,9 +13,3 @@
 - 既存BDD repositoryは利用者が資料を渡す境界で接続する。既存BDDの成果物形式、内部skill、script、install cacheを変更または直接参照しない。
 - 検査が読む目印（追跡の表の見出し行・ID・根拠状態の値・構成図のブロック）はwrite-docの公開契約「検査が読む目印」が所有する。このrepositoryの検査scriptはその目印だけを読み、見出しの文言を読まない。目印とscriptが食い違えばscript側を直す。package共有code（`plugins/system-design/scripts/`）は構文解析と用語定義の検査だけを持ち、各skill固有の意味判断を共通層へ移さない。
 - fixtureは各入口のMarkdown正例（`tests/fixtures/<入口>/success.md`）を持ち、testが文字列置換で反例・境界例を作って検査scriptへ標準入力で渡す。fixtureの存在を実モデル評価の成功として扱わない。案件固有の値（特定サービスの用語、閾値、採用技術）を既定値や例の正解にしない。`tests/fixtures/legacy-json/`は記録として保全するだけで、testから参照しない。
-- install cache、隣接repository、外部公開、pushは変更しない。このsource treeだけを編集対象とする。
-- 変更後は`bash scripts/validate.sh`を実行する。失敗したときは検査を緩めて成功させず、原因を直す。
-
-## 検査スクリプトは、意味が一意に決まることだけを判定する
-
-このrepositoryの検査スクリプト（validate、lint、verify、checkなど、名前を問わない）が判定してよいのは、ファイルや見出しの有無、識別子や版の一致、宣言と配置の対応、禁止された書き方の有無のように、入力と基準資料から意味が決定論的に一意に決まることだけである。読んで解釈しないと決まらないことや、件数や語の出現のような品質の代わりの指標は判定せず、エージェントが読んで評価する（意味評価）。判定が一意に決まることを宣言できない検査は作らず、詳しい条件は `/Users/naoya-nakamoriq/Documents/Github/harness-pluginsv2/.agents/rules/deterministic-validation.md` に従う。
