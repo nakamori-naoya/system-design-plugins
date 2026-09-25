@@ -3,33 +3,32 @@
 
   python3 scripts/architecture.py check [--upstream <上流資料の絶対path> ...] < <クラウドアーキテクチャ資料の本文（Markdown）>
 
-基準資料: write-doc の公開契約「検査が読む目印」の cloud-architecture。見出しの文言は読まない。読むのは、H1と冒頭の本文段落、
+読む目印: write-doc の cloud-architecture 型の template にある「検査が読む目印」。見出しの文言は読まない。読むのは、H1と冒頭の本文、
   見出し行が「ID | 内容 | 根拠と状態」の追跡の表（資料に1つ、どの見出しの下でもよい）、`flowchart` で始まる Mermaid ブロック1つ、
-  本文全体のID参照だけである。上流資料（--upstream の要求発見・利用負荷モデル・品質要求）が定義するID。
+  本文全体のID参照だけである。上流資料（--upstream の要件・利用負荷モデル・品質要求）が定義するID。
 入力: 標準入力の本文、--upstream の上流資料の絶対path（複数可）。一時fileは作らず、保存はwrite-docが行う。
 正規化: HTMLコメントを除き、コードブロック外のH2見出しで節へ切る（見出しの文言は比べない）。表のセルの `*` と backtick を除く。
   上流からは表の1列目と `### <ID>: ` で始まる見出しのIDを拾う。
 合格述語:
-  - H1と、最初のH2より前の本文段落（表・引用・箇条書きで始めない）があり、H2が1つ以上あり、どのH2節も空でない
+  - H1と、最初のH2より前の本文があり、H2が1つ以上あり、どのH2節も空でない
   - 追跡の表が1つあり、IDが一意で、CON- / NODE- / ADR- / FAIL- / ARC-HYP- / ARC-OQ- か、上流で定義済みの <接頭辞>-HYP- / <接頭辞>-OQ- である
   - 根拠と状態のセルが状態の値をちょうど1つ持ち、IDの種別で許される値である（CON: fact / agreed_decision / hypothesis、
     NODE: agreed_decision / hypothesis / open_question、ADR: agreed_decision / hypothesis、FAIL: agreed_decision / hypothesis / open_question、
     <接頭辞>-HYP-: hypothesis、<接頭辞>-OQ-: open_question）。同じセルが引くIDはすべて到達する
   - NODE- と ADR- の行は、CON- か上流のIDを1つ以上引く。FAIL- の行は NODE- を1つ以上引く
-  - agreed_decision の CON- が1つ以上ある
   - `flowchart` で始まる Mermaid ブロックがちょうど1つあり、subgraph と end の数が一致し、追跡の表の全 NODE- が現れ、図の中の NODE- が追跡の表にある
   - 本文（冒頭と図を含む）で引く CON / NODE / ADR / FAIL / ARC-HYP / ARC-OQ と上流の REQ / DRV / WL / DIN / QR / QCON と上流の HYP / OQ がすべて定義済み。
     上流の家族を引きながら --upstream が無ければ不合格
 失敗時の診断: 標準エラーに `FAIL: <理由>` を1件。終了code 2。
-正例: tests/fixtures/design-cloud-architecture/success.md（--upstream に上流3 fixture。status: unresolved）と、未決を解き ADR を agreed_decision にした写し（status: ready）。
+正例: tests/fixtures/cloud-architecture.md（--upstream に上流3 fixture。status: unresolved）と、未決を解き ADR を agreed_decision にした写し（status: ready）。
 反例: 追跡の表が無いか2つある、IDの重複、ID種別と状態の食い違い、状態が2つあるセル、根拠を引かない NODE / ADR、NODE を引かない FAIL、
-  agreed_decision の CON が無い、図が無いか2つある、graph で始まる図、subgraph/end の不対応、図に無い NODE、表に無い図の NODE、上流に無いID。
+  図が無いか2つある、graph で始まる図、subgraph/end の不対応、図に無い NODE、表に無い図の NODE、上流に無いID。
 境界例: 見出しの名前と順序は問わず、ADR の小見出しや節の見出しに結論を入れても通る。NODE_DB のような下線名は図の内部名であり NODE- ではない。
   上流の未決を引き継ぐ行は上流IDをそのまま使う。
 意味評価として残す範囲: 利用者が指定したプロバイダーと本文の構成が一致しているか、配置方式の判定、選定と代替案の比較の妥当性、ADR の文脈と帰結、
-  障害経路の網羅と縮退の妥当性、図が判断に重要な境界と流れを示しているか、追跡の意味上の正しさ、用語定義の語の使い方。
+  障害経路の網羅と縮退の妥当性、図が判断に重要な境界と流れを示しているか、追跡の意味上の正しさ、語が業務知識のユビキタス言語に沿っているか。
 
-status は、open_question の行が無く、agreed_decision の ADR- が1つ以上あるとき ready、それ以外は unresolved である。
+status は、open_question の行が無く、hypothesis の ADR- も無いとき ready、それ以外は unresolved である。
 exit 0 = 通った（stdoutに status と ID の一覧のJSON） / 2 = 標準入力が空、上流が読めない、または述語が成り立たない。
 """
 
@@ -118,10 +117,6 @@ def check(body: str, upstream: list[str]) -> dict:
             fail(f"{identifier} の根拠と状態は起点の NODE- を1つ以上引かなければなりません")
         registry.resolve(row["内容"], f"{identifier}.内容")
 
-    agreed_constraints = [identifier for identifier, kind in kinds.items() if kind == "CON" and states[identifier] == "agreed_decision"]
-    if not agreed_constraints:
-        fail("追跡の表に agreed_decision の CON- がありません")
-
     diagrams = [block for block in mermaid_blocks(doc.all_lines()) if [line for line in block if line.strip()][:1] and [line for line in block if line.strip()][0].strip().startswith("flowchart")]
     if len(diagrams) != 1:
         fail(f"構成図として flowchart で始まる mermaid ブロックが1つ必要です（見つかったブロック: {len(diagrams)}）")
@@ -145,12 +140,12 @@ def check(body: str, upstream: list[str]) -> dict:
     accepted = [identifier for identifier in adrs if states[identifier] == "agreed_decision"]
     hypotheses = [identifier for identifier, kind in kinds.items() if kind == "HYP"]
     open_rows = [identifier for identifier, state in states.items() if state == "open_question"]
-    ready = not open_rows and bool(accepted)
+    ready = not open_rows and len(accepted) == len(adrs)
     return {
         "verified": True,
         "document_type": "cloud-architecture",
         "status": "ready" if ready else "unresolved",
-        "provider_constraints": agreed_constraints,
+        "constraints": [identifier for identifier, kind in kinds.items() if kind == "CON"],
         "nodes": nodes,
         "adrs": adrs,
         "accepted_adrs": accepted,
@@ -165,7 +160,7 @@ def check(body: str, upstream: list[str]) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("check",))
-    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要求発見・利用負荷・品質要求）の絶対path。複数可")
+    parser.add_argument("--upstream", action="append", default=[], help="上流資料（要件・利用負荷・品質要求）の絶対path。複数可")
     args = parser.parse_args()
     try:
         result = check(read_stdin(), args.upstream)

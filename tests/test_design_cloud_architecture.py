@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """design-cloud-architecture の検査script（architecture.py）の正例・反例・境界例。
 
-基準資料: write-doc の公開契約「検査が読む目印」の cloud-architecture（scriptのdocstringに述語を列挙）。
+読む目印: write-doc の cloud-architecture 型の template にある「検査が読む目印」（述語は script の docstring）。
 入力: 標準入力のMarkdown本文、--upstream の要求発見・利用負荷・品質要求資料（fixture）。
 """
 
@@ -22,7 +22,7 @@ class ArchitectureContractTest(CanonCase):
         payload = self.assert_pass(self.body())
         self.assertEqual(payload["document_type"], "cloud-architecture")
         self.assertEqual(payload["status"], "unresolved")
-        self.assertEqual(payload["provider_constraints"], ["CON-001"])
+        self.assertIn("CON-001", payload["constraints"])
         self.assertEqual(payload["nodes"], ["NODE-EDGE", "NODE-API", "NODE-DB", "NODE-QUEUE", "NODE-NOTIFY"])
         self.assertEqual(payload["unresolved_elements"], ["NODE-NOTIFY"])
         self.assertEqual(payload["open_questions"], ["ARC-OQ-001", "WL-OQ-001", "REQ-OQ-001", "QR-OQ-001"])
@@ -62,8 +62,17 @@ class ArchitectureContractTest(CanonCase):
         self.assert_fail(self.mutate("NODE-DB、QR-001、hypothesis", "QR-001、hypothesis"), "FAIL-002 の根拠と状態は起点の NODE-")
         self.assert_fail(self.mutate("NODE-DB、QR-001、hypothesis", "NODE-CACHE、QR-001、hypothesis"), "参照が未解決です: NODE-CACHE")
 
-    def test_provider_constraint_must_be_agreed(self) -> None:
-        self.assert_fail(self.mutate("プロバイダーはAWS | agreed_decision |", "プロバイダーはAWS | hypothesis |"), "agreed_decision の CON- がありません")
+    def test_constraint_state_is_not_counted(self) -> None:
+        # provider の制約が合意済みかは読んで確かめる。件数は判定しない
+        self.assert_pass(self.mutate("プロバイダーはAWS | agreed_decision |", "プロバイダーはAWS | hypothesis |"))
+
+    def test_hypothesis_adr_keeps_status_unresolved(self) -> None:
+        body = self.body()
+        body = re.sub(r"^\| (ARC-OQ-001|WL-OQ-001|REQ-OQ-001|QR-OQ-001) \|.*\n", "", body, flags=re.M)
+        body = body.replace("REQ-004、WL-003、REQ-OQ-001、open_question", "REQ-004、WL-003、hypothesis")
+        body = re.sub(r"`(REQ-OQ-001|WL-OQ-001|QR-OQ-001|ARC-OQ-001)`", "未決", body)
+        body = re.sub(r"(QR-OQ-001|ARC-OQ-001)", "未決", body)
+        self.assertEqual(self.assert_pass(body)["status"], "unresolved")
 
     def test_diagram(self) -> None:
         self.assert_fail(self.mutate('NODE_DB[("NODE-DB<br/>予約データベース")]', 'NODE_DB[("予約データベース")]'), "構成図に現れない NODE- があります: ['NODE-DB']")
