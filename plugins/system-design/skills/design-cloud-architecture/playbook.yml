@@ -21,7 +21,7 @@ steps:
     purpose: "配置方式の境界を判定する"
   - id: compare-alternatives
     agent_work: invoking_agent
-    purpose: "12選定項目ごとに代替案を比較する"
+    purpose: "構成を左右する選定ごとに代替案を比較する"
   - id: record-adrs
     agent_work: invoking_agent
     purpose: "採用判断をADRへ固定する"
@@ -33,7 +33,7 @@ steps:
     purpose: "編集可能なインフラ構成図を作る"
   - id: close-trace-and-verification
     agent_work: invoking_agent
-    purpose: "要求トレーサビリティと検証を閉じる"
+    purpose: "追跡の表と検証を閉じる"
   - id: settle
     playbook: grill
     purpose: "手順1〜7で残った未決のうち、答えで配置方式・選定・ADRの採否・障害時の挙動が変わる問いを成果を左右する順に推奨付きでquestionsへ渡し、grillの公開契約に従って利用者と解消し、決定と未決（推奨付き）を受け取る"
@@ -41,13 +41,13 @@ steps:
     provides: [decisions, open_questions]
   - id: compose-document-text
     agent_work: invoking_agent
-    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question（選定は 未決、ADRは hypothesis のまま）として仮説と未決へ書き、templateの記法で本文をインメモリで組み立てる"
+    purpose: "決定を本文へ反映し、未決は推奨を仮置きした hypothesis / open_question（選定は未決、ADRは hypothesis のまま）として追跡の表と本文へ書き、write-docの公開契約「検査が読む目印」に従って本文をインメモリで組み立てる"
     needs: [decisions, open_questions]
     provides: [architecture_document_text]
   - id: verify
     script: scripts/architecture.py
-    purpose: "本文を標準入力、providerを--provider、上流3資料を--upstreamで受け、H2の集合と順序、providerの根拠制約と一致、12選定項目と状態、NODE・ADR・FAILの一意性と参照到達、mermaidに全NODEが現れること、全ADR・NODEの追跡、未決の問いへの接続を述語として検査し、statusとID一覧を返す"
-    needs: [architecture_document_text, provider, requirements_document_path, workload_document_path, quality_document_path]
+    purpose: "本文を標準入力、上流3資料を--upstreamで受け、冒頭、追跡の表のIDの一意性とIDの種別ごとの状態、根拠IDの到達、agreed_decisionのCON、flowchartに全NODEが現れることを述語として検査し、statusとID一覧を返す"
+    needs: [architecture_document_text, requirements_document_path, workload_document_path, quality_document_path]
     provides: [verification_result]
   - id: save-markdown-canonical
     playbook: write-doc
@@ -58,5 +58,5 @@ steps:
     provides: [architecture_document_path]
   - id: read-back-document
     agent_work: invoking_agent
-    purpose: "保存した資料を読み戻し、検査した本文と同じID、選定状態、ADR、図、未決、statusを保っていることを確かめる"
-    needs: [architecture_document_path, verification_result]
+    purpose: "保存した資料を読み戻し、検査した本文と同じID、状態、ADR、図、未決、statusを保っていることと、採用した構成が入力providerで組まれていることを確かめる"
+    needs: [architecture_document_path, verification_result, provider]

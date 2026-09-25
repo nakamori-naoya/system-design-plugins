@@ -3,19 +3,20 @@
 
   python3 scripts/workload.py check [--upstream <要求発見資料の絶対path> ...] < <利用負荷モデル資料の本文（Markdown）>
 
-基準資料: write-doc の workload-model 型の template と見本。本文の見出しは読み手に合わせて名付けてよく、後続資料が
-  IDで参照する設計入力と未決は「追跡情報」の節の表に置く。上流（要求発見資料）の追跡情報が定義するID。
+基準資料: write-doc の公開契約「検査が読む目印」の workload-model。見出しの文言は読まない。後続資料が
+  IDで参照する設計入力と未決は、見出し行が「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の追跡の表に置く（どの見出しの下でもよい）。
+  上流（要求発見資料）が定義するID。
 入力: 標準入力の本文と、--upstream の上流資料の絶対path（複数可）。一時fileは作らず、保存はwrite-docが行う。
-正規化: HTMLコメントを除き、コードブロック外の見出しで節へ切る。表のセルの `*` と backtick を除く。上流からは表の1列目のIDを拾う。
+正規化: HTMLコメントを除き、コードブロック外のH2見出しで節へ切る（見出しの文言は比べない）。表のセルの `*` と backtick を除く。上流からは表の1列目のIDを拾う。
 合格述語:
   - H1と、最初のH2より前の本文段落（表・引用・箇条書きで始めない）があり、H2が1つ以上あり、どのH2節も空でない
-  - 「追跡情報」の節に「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の表があり、IDが DIN- / WL- / <接頭辞>-OQ- で一意
+  - 見出し行が「ID | 設計入力 | 根拠と状態 | 影響する要求・判断」の表が資料に1つあり、IDが DIN- / WL- / <接頭辞>-OQ- で一意
   - 上流の <接頭辞>-OQ- と、影響する要求・判断が引く REQ- / DRV- / CON- 等の上流IDが、上流資料で定義済みである
 失敗時の診断: 標準エラーに `FAIL: <理由>` を1件。終了code 2。
 正例: tests/fixtures/discover-workload-model/success.md（write-doc の見本と同じ本文。--upstream に要求発見のfixture）。
-反例: 追跡情報の節が無い、IDの形式が違う、上流に無いIDを引く、--upstream を渡さずに上流IDを引く。
-境界例: 見出しの名前と順序は問わない。未決が無ければ status: ready。
-意味評価として残す範囲: 数値と根拠の妥当性、採用する仮定の適否、本文の計算が追跡情報の値と合っているか。
+反例: 追跡の表が無いか2つある、IDの形式が違う、上流に無いIDを引く、--upstream を渡さずに上流IDを引く。
+境界例: 見出しの名前と順序は問わず、追跡の表を置く見出しを改名しても通る。未決が無ければ status: ready。
+意味評価として残す範囲: 数値と根拠の妥当性、採用する仮定の適否、本文の計算が追跡の表の値と合っているか。
 
 exit 0 = 通った（stdoutに status と ID の一覧のJSON） / 2 = 標準入力が空、上流が読めない、または述語が成り立たない。
 """
@@ -36,10 +37,8 @@ from canon import (  # noqa: E402  package共有の構文解析と共通述語
     fail,
     read_stdin,
     read_upstream,
-    single_table,
+    trace_table,
     strip_markup,
-    subsections,
-    tables,
 )
 
 DIN = re.compile(r"^DIN-\d{3,}$")
@@ -49,41 +48,27 @@ ANY_HYP_OR_OQ = re.compile(r"^[A-Z]{2,}-(HYP|OQ)-\d{3,}$")
 
 
 def check_human_format(doc: Document, registry: Registry, upstream: list[str]) -> dict:
-    if doc.title is None:
-        fail("文書題名（H1）がありません")
-    intro = [line for line in doc.intro if line.strip()]
-    if not intro:
-        fail("冒頭の本文段落がありません（最初のH2より前に本文を書く）")
-    if intro[0].lstrip().startswith(("|", ">", "- ", "* ")):
-        fail("冒頭は本文段落で始める（表・引用・箇条書きではない）")
-    if not doc.order:
-        fail("本文を判断単位へ分けるH2見出しがありません")
-    for name in doc.order:
-        if not any(line.strip() for line in doc.sections[name]):
-            fail(f"節が空です: {name}")
-    if "追跡情報" not in doc.sections:
-        fail("後続資料へ渡す設計入力の追跡情報がありません")
-
-    rows = single_table(doc, "追跡情報", ["ID", "設計入力", "根拠と状態", "影響する要求・判断"])
+    doc.check_opening()
+    rows = trace_table(doc, ["ID", "設計入力", "根拠と状態", "影響する要求・判断"])
     design_inputs: list[str] = []
     workload_items: list[str] = []
     open_questions: list[str] = []
     for row in rows:
         identifier = strip_markup(row["ID"])
         if DIN.fullmatch(identifier):
-            registry.define(identifier, "追跡情報")
+            registry.define(identifier, "追跡の表")
             design_inputs.append(identifier)
         elif WL.fullmatch(identifier):
-            registry.define(identifier, "追跡情報")
+            registry.define(identifier, "追跡の表")
             workload_items.append(identifier)
         elif ANY_HYP_OR_OQ.fullmatch(identifier) and "-OQ-" in identifier:
             if identifier.startswith("WL-"):
-                registry.define(identifier, "追跡情報")
+                registry.define(identifier, "追跡の表")
             else:
-                registry.resolve(identifier, "追跡情報.ID")
+                registry.resolve(identifier, "追跡の表.ID")
             open_questions.append(identifier)
         else:
-            fail(f"追跡情報のIDは DIN- / WL- / <接頭辞>-OQ- でなければなりません: {identifier}")
+            fail(f"追跡の表のIDは DIN- / WL- / <接頭辞>-OQ- でなければなりません: {identifier}")
         registry.resolve(row["影響する要求・判断"], f"{identifier}.影響する要求・判断")
 
     return {

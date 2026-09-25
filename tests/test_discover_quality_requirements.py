@@ -28,7 +28,13 @@ class QualityContractTest(CanonCase):
         self.assert_pass(self.mutate("## 性能", "## 応答の速さ"))
 
     def test_trace_section_is_required(self) -> None:
-        self.assert_fail(self.mutate("## 追跡情報", "## 対応"), "追跡情報がありません")
+        # 見出しの文言は読まない。追跡の表は見出し行で見つける
+        self.assert_pass(self.mutate("## 追跡情報", "## 対応"))
+        self.assert_fail(self.mutate("| ID | 守る性質 | 観測・検証 | 根拠と状態 |", "| ID | 性質 | 観測・検証 | 根拠と状態 |"), "「ID | 守る性質 | 観測・検証 | 根拠と状態」の見出し行を持つ追跡の表がありません")
+        body = self.body()
+        start = body.index("| ID | 守る性質 | 観測・検証 | 根拠と状態 |")
+        table = (body[start:] + "\n\n").split("\n\n", 1)[0]
+        self.assert_fail(body + "\n\n## 付録\n\n" + table + "\n", "「ID | 守る性質 | 観測・検証 | 根拠と状態」の表が 2 個あります")
 
     def test_state_vocabulary(self) -> None:
         self.assert_fail(self.mutate("| REQ-002、WL-002、agreed_decision |", "| REQ-002、WL-002、fact |"), "QR-001.根拠と状態")
