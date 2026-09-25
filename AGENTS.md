@@ -12,9 +12,9 @@
 - `design-cloud-architecture`は利用者が明示した`provider`（`aws`または`gcp`）を公開入力として受け取り、設定ファイルや既定値を持たない。未指定・不正値は確認を求めて停止し、指定の根拠を合意済み制約として基準資料へ追跡する。
 - 既存BDD repositoryは利用者が資料を渡す境界で接続する。既存BDDの成果物形式、内部skill、script、install cacheを変更または直接参照しない。
 - 検査が読む目印（追跡の表の見出し行・ID・根拠状態の値・構成図のブロック）はwrite-docの公開契約「検査が読む目印」が所有する。このrepositoryの検査scriptはその目印だけを読み、見出しの文言を読まない。目印とscriptが食い違えばscript側を直す。package共有code（`plugins/system-design/scripts/`）は構文解析と用語定義の検査だけを持ち、各skill固有の意味判断を共通層へ移さない。
-- fixtureは各入口のMarkdown正例（`tests/fixtures/<入口>/success.md`）を持ち、testが文字列置換で反例・境界例を作って検査scriptへ標準入力で渡す。fixtureの存在を実モデル評価の成功として扱わない。案件固有の値（特定サービスの用語、閾値、採用技術）を既定値や例の正解にしない。2026-09-16以前のJSON fixtureは`tests/fixtures/legacy-json/`に記録として保全し、現行testからは参照しない。
+- fixtureは各入口のMarkdown正例（`tests/fixtures/<入口>/success.md`）を持ち、testが文字列置換で反例・境界例を作って検査scriptへ標準入力で渡す。fixtureの存在を実モデル評価の成功として扱わない。案件固有の値（特定サービスの用語、閾値、採用技術）を既定値や例の正解にしない。`tests/fixtures/legacy-json/`は記録として保全するだけで、testから参照しない。
 - install cache、隣接repository、外部公開、pushは変更しない。このsource treeだけを編集対象とする。
-- 変更後は`bash scripts/validate.sh`を実行する。未実装の公開skillがある間は失敗が正しく、検査を緩めて成功させない。
+- 変更後は`bash scripts/validate.sh`を実行する。失敗したときは検査を緩めて成功させず、原因を直す。
 
 ## 検査スクリプトは、意味が一意に決まることだけを判定する
 
