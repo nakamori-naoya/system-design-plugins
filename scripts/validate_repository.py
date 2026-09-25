@@ -145,7 +145,7 @@ def validate_entry(package: Path, identifier: str) -> None:
 def validate_repository(repository: Path) -> None:
     if not repository.is_absolute() or repository.is_symlink() or not repository.is_dir():
         fail(f"repositoryは実在する絶対directoryでなければならない: {repository}")
-    expected = ("system-design", "2.1.0", "./plugins/system-design")
+    expected = ("system-design", "3.0.0", "./plugins/system-design")
     if marketplace(repository, "codex") != expected or marketplace(repository, "claude") != expected:
         fail("marketplace identityがruntime間またはpackageと一致しない")
     package = repository / "plugins/system-design"
