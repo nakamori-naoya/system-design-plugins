@@ -8,7 +8,6 @@ __pycache__/
 !/.agents/
 !/.claude-plugin/
 !/.github/
-!/.harness-plugins/
 !/plugins/
 !/scripts/
 !/tests/
