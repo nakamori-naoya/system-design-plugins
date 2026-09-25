@@ -41,7 +41,7 @@
 
 `design-cloud-architecture`は、利用者が依頼で明示したプロバイダー（`aws`または`gcp`）を公開入力`provider`として受け取ります。設定ファイルや同梱既定値は持たず、未指定や`aws`／`gcp`以外は確認を求めて停止します。指定の根拠は合意済み制約（`CON-`）として基準資料の追跡の表へ記録します。採用した構成が入力providerのサービスで組まれていることは、語の照合では決まらないので検査scriptでは確かめず、agentが保存後の資料を読み戻して確かめます。
 
-以前の設定解決経路（`.harness-plugins/system-design.config.yml`、`prepare.sh`）と、2026-09-16以前のJSON資料（`<repo>/system-design/<kind>/<slug>.<kind>.json`）は撤去しました。JSON資料を読む・更新する経路は無く、既存のJSON資料は参照資産として残せますが現行入力にはなりません。同じ対象の基準資料はMarkdownとして新規に作ります。当時のJSON fixtureは`tests/fixtures/legacy-json/`に記録として保全しています。
+以前の設定解決経路（`.harness-plugins/system-design.config.yml`、`prepare.sh`）と、2026-09-16以前のJSON資料（`<repo>/system-design/<kind>/<slug>.<kind>.json`）は撤去しました。JSON資料を読む・更新する経路は無く、既存のJSON資料は参照資産として残せますが現行入力にはなりません。同じ対象の基準資料はMarkdownとして新規に作ります。
 
 ## 英語表記の監査方針
 

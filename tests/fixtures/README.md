@@ -28,8 +28,3 @@
 - 正例: 4入口。反例: `requires`無し、`verify`より前のwrite-doc、別の文書型、`skill:`での呼び出し。
 - 境界例: 本文と保存先は実行時の値なので検査しない。write-docの`completed`を設計の`ready`に使わない。
 - 意味評価: 渡す本文が検査済み本文のID・根拠・数値・未決・図を保っているかは、agentが保存後の資料を読み戻して確認する。
-
-## 保全している過去の資産
-
-- `legacy-json/`: 2026-09-16以前のJSON資料（`schema_version: 2`）のfixtureと意味評価シナリオ。現行testからは参照しない。詳細は `legacy-json/README.md`。
-- `runtime-config/`: 撤去した設定解決経路（`prepare.sh` / `resolve.sh`）の設定テストデータ。現在どのtestからも参照されない。資産の削除は別の明示された変更として扱うため保持している。
