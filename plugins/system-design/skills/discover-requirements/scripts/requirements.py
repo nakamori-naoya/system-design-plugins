@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""要求発見資料（requirements-discovery型のMarkdown）の構造契約を検査する。
+"""要件の資料（requirements-discovery型のMarkdown）の構造契約を検査する。
 
-  python3 scripts/requirements.py check < <要求発見資料の本文（Markdown）>
+  python3 scripts/requirements.py check < <要件の資料の本文（Markdown）>
 
-基準資料: write-doc の公開契約「検査が読む目印」の requirements-discovery。見出しの文言は読まない。
+読む目印: write-doc の requirements-discovery 型の template にある「検査が読む目印」。見出しの文言は読まない。
   後続資料がIDで参照する要求と未決は、見出し行が決まった追跡の表に置く（どの見出しの下でもよい）。
 入力: 標準入力の本文（UTF-8 Markdown）だけ。上流資料は無い。一時fileは作らず、保存はwrite-docが行う。
 正規化: HTMLコメントを除き、コードブロック外のH2見出しで節へ切る（見出しの文言は比べない）。表のセルの `*` と backtick を除く。
 合格述語:
-  - H1と、最初のH2より前の本文段落（表・引用・箇条書きで始めない）があり、H2が1つ以上あり、どのH2節も空でない
+  - H1と、最初のH2より前の本文があり、H2が1つ以上あり、どのH2節も空でない
   - 見出し行が「ID | 本文で扱う要求 | 根拠」の表が資料に1つあり、IDが REQ- / DRV- / CON- / DEC- のどれかで一意、
     本文で扱う要求と根拠が空でなく、REQ- が1つ以上ある
   - 見出し行が「ID | 状態 | 後続で決める論点」の表があれば（資料に1つまで）、IDが REQ-HYP- / REQ-OQ- で一意、
     状態が REQ-HYP- なら hypothesis、REQ-OQ- なら open_question
 失敗時の診断: 標準エラーに `FAIL: <理由>`（節名、ID、列）を1件。終了code 2。
-正例: tests/fixtures/discover-requirements/success.md（write-doc の見本と同じ本文。status: unresolved）。
-反例: 追跡の表が無いか2つある、IDの形式が違う、IDの重複、根拠が空、REQ- が無い、状態とIDの種別の食い違い、冒頭が表。
+正例: tests/fixtures/requirements-discovery.md（write-doc の見本と同じ本文。status: unresolved）。
+反例: 追跡の表が無いか2つある、IDの形式が違う、IDの重複、根拠が空、REQ- が無い、状態とIDの種別の食い違い。
 境界例: 未決の表が無ければ status: ready。見出しの名前と順序は問わず、追跡の表を置く見出しを改名しても通る。ほかの列の表は検査しない。
 意味評価として残す範囲: 要求と根拠の分類が正しいか、見出しと本文が読み手の判断に足りるか、未決の扱いが妥当か。
 
