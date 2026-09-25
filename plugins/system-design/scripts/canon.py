@@ -264,14 +264,31 @@ class Registry:
         return [identifier for identifier in self.local if family(identifier) == group]
 
 
-def terminology_lines(doc: Document, section: str = "用語") -> tuple[str | None, int | None, list[str]]:
-    """`用語定義: <絶対path> 版: <整数>` または `用語定義: なし`、続く `推奨用語名: a、b` を読む。"""
-    lines = [strip_markup(line) for line in doc.lines(section) if line.strip()]
-    if not lines:
-        fail("節「用語」が空です")
-    head = re.match(r"^用語定義[:：]\s*(.+?)\s*(?:版[:：]\s*(\d+))?$", lines[0])
+def prose_lines(doc: Document) -> list[str]:
+    """冒頭と全H2節の行のうち、コードブロックの外の行。"""
+    lines: list[str] = []
+    in_code = False
+    for line in doc.all_lines():
+        if line.startswith("```"):
+            in_code = not in_code
+            continue
+        if not in_code:
+            lines.append(line)
+    return lines
+
+
+def terminology_lines(doc: Document) -> tuple[str | None, int | None, list[str]]:
+    """資料のどこにあってもよい `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` の行と、
+    `推奨用語名: a、b` の行を読む。見出しの名前は読まない。`用語定義:` の行が無ければ (None, None, []) ではなく失敗にする。"""
+    lines = [strip_markup(line) for line in prose_lines(doc) if line.strip()]
+    heads = [line for line in lines if re.match(r"^用語定義[:：]", line)]
+    if not heads:
+        fail("`用語定義: <絶対path> 版: <整数>` または `用語定義: なし` の行がありません")
+    if len(heads) != 1:
+        fail(f"`用語定義:` の行は資料に1つだけ置きます（見つかった行: {len(heads)}）")
+    head = re.match(r"^用語定義[:：]\s*(.+?)\s*(?:版[:：]\s*(\d+))?$", heads[0])
     if head is None:
-        fail("節「用語」の1行目は `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` でなければなりません")
+        fail("`用語定義:` の行は `用語定義: <絶対path> 版: <整数>` または `用語定義: なし` でなければなりません")
     locator = head.group(1).strip()
     if locator == "なし":
         if head.group(2) is not None:
@@ -284,13 +301,13 @@ def terminology_lines(doc: Document, section: str = "用語") -> tuple[str | Non
         fail("用語定義の版は1以上の整数でなければなりません")
     if not Path(locator).is_absolute():
         fail(f"用語定義の所在は絶対pathでなければなりません: {locator}")
-    terms: list[str] = []
-    for line in lines[1:]:
-        match = re.match(r"^推奨用語名[:：]\s*(.+)$", line)
-        if match:
-            terms = [item.strip() for item in re.split(r"[、,]", match.group(1)) if item.strip()]
+    named = [line for line in lines if re.match(r"^推奨用語名[:：]", line)]
+    if len(named) != 1:
+        fail(f"用語定義を参照するときは `推奨用語名: <名>、<名>` の行を1つ置きます（見つかった行: {len(named)}）")
+    value = re.match(r"^推奨用語名[:：]\s*(.*)$", named[0]).group(1)
+    terms = [item.strip() for item in re.split(r"[、,]", value) if item.strip()]
     if not terms:
-        fail("用語定義を参照するときは `推奨用語名: <名>、<名>` の行が必要です")
+        fail("`推奨用語名:` の行に推奨用語名がありません")
     if len(set(terms)) != len(terms):
         fail("推奨用語名に重複があります")
     return locator, version, terms
