@@ -9,7 +9,7 @@
       "name": "system-design",
       "source": "./plugins/system-design",
       "description": "要求発見から根拠付きcloud設計までの4つの独立skillを提供する",
-      "version": "2.1.0"
+      "version": "3.0.0"
     }
   ]
 }
