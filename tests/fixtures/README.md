@@ -6,7 +6,7 @@
 - `discover-workload-model/success.md`: 利用負荷モデル資料。`--upstream` に要求発見fixture。
 - `discover-quality-requirements/success.md`: 品質要求資料。`--upstream` に要求発見・利用負荷fixture。
 - `design-cloud-architecture/success.md`: クラウドアーキテクチャ資料。`--upstream` に上流3 fixture。
-- `terminology/success.md`: 共有用語定義の正例。要求発見fixtureの `## 用語` が参照し、`terminology.py` が同じ所在・版・推奨用語名・コマンド／クエリの操作名を検査する。
+- `terminology/success.md`: 共有用語定義の正例。要求発見fixtureの `用語定義:` の行が参照し、`terminology.py` が同じ所在・版・推奨用語名・コマンド／クエリの操作名を検査する。
 
 4本は同じ架空の対象（申請結果確認）で上流→下流の参照が閉じている。案件固有の値を既定値や例の正解にしない。fixtureの存在を実モデル評価の成功として扱わない。
 
