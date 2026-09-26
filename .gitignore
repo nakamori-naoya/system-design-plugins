@@ -12,6 +12,7 @@ __pycache__/
 !/scripts/
 !/tests/
 !/AGENTS.md
+!/CLAUDE.md
 !/LICENSE
 !/README.md
 !/SECURITY.md
