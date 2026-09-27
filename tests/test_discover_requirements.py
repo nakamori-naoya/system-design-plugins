@@ -2,7 +2,7 @@
 """discover-requirements の検査script（requirements.py）の正例・反例・境界例。
 
 読む目印: write-doc の requirements-discovery 型の template にある「検査が読む目印」（述語は script の docstring）。
-入力: 標準入力のMarkdown本文だけ（上流資料を持たない）。正例は write-doc の見本と同じ本文の fixture。
+入力: 標準入力のMarkdown本文だけ（上流資料を持たない）。正例は tests/fixtures の fixture。
 """
 
 from __future__ import annotations

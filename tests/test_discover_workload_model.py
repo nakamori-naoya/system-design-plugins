@@ -2,7 +2,7 @@
 """利用負荷の資料の検査script（workload.py）の正例・反例・境界例。
 
 読む目印: write-doc の workload-model 型の template にある「検査が読む目印」（述語は script の docstring）。
-入力: 標準入力のMarkdown本文と、--upstream の要求発見資料（fixture）。正例は write-doc の見本と同じ本文の fixture。
+入力: 標準入力のMarkdown本文と、--upstream の要求発見資料（fixture）。正例は tests/fixtures の fixture。
 """
 
 from __future__ import annotations

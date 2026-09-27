@@ -16,4 +16,4 @@ Codex の marketplace は `.agents/plugins/marketplace.json`、Claude Code の m
 
 ## 検証
 
-`bash scripts/validate.sh` は、兄弟 checkout の `../harness-tools` による package の構造検査、各入口の SKILL.md から自分の reference へ届くことと兄弟の入口の path を書かないことの検査、検査 script の正例・反例・境界例の test、write-doc の見本（兄弟 checkout の `../write-doc-plugins`）が四つの検査を通ることを確かめます。harness-tools か write-doc の checkout が無ければ、fixture で代用せずに止まります。CI は `.github/workflows/validate.yml` から同じ command を実行します。
+`bash scripts/validate.sh` は、兄弟 checkout の `../harness-tools` による package の構造検査、各入口の SKILL.md から自分の reference へ届くことと兄弟の入口の path を書かないことの検査、検査 script の正例・反例・境界例の test を確かめます。正例は `tests/fixtures/` にあります。harness-tools の checkout が無ければ止まります。CI は `.github/workflows/validate.yml` から同じ command を実行します。
