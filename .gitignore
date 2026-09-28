@@ -16,3 +16,6 @@ __pycache__/
 !/README.md
 !/SECURITY.md
 !/.gitignore
+
+# 評価の入力・成果物は各作業環境に保持する
+/evals/
