@@ -64,7 +64,7 @@ def self_test(repository: Path) -> None:
 
     mutated("入口名を挙げるだけの文", lambda text: text + "\n構成は `design-cloud-architecture` が決める。\n", None)
     mutated("兄弟の入口の path", lambda text: text + "\n詳しくは ../design-cloud-architecture/references/ を読む。\n", "兄弟の入口の path")
-    mutated("reference へのリンクの欠落", lambda text: text.replace("](references/workload-model.md)", "]"), "全 reference へ直接リンクしていない")
+    mutated("reference へのリンクの欠落", lambda text: text.replace("](references/non-functional-requirements.md)", "]"), "全 reference へ直接リンクしていない")
     print("Validator self-test: passed")
 
 
